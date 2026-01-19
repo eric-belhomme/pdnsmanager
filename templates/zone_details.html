@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Zone: {{ zone.name }}</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <script>
+        function editRecord(name, type, ttl, content) {
+            document.getElementById('name').value = name;
+            document.getElementById('rtype').value = type;
+            document.getElementById('ttl').value = ttl;
+            document.getElementById('content').value = content;
+            document.getElementById('form-title').innerText = "Modifier l'enregistrement";
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+    </script>
+</head>
+<body class="bg-gray-100 text-gray-800 font-sans">
+
+    <div class="container mx-auto px-4 py-8 max-w-6xl">
+        
+        <!-- Header & Navigation -->
+        <div class="flex justify-between items-center mb-6">
+            <div class="flex items-center">
+                <a href="/" class="text-gray-500 hover:text-gray-700 mr-4">
+                    <i class="fa-solid fa-arrow-left fa-lg"></i>
+                </a>
+                <h1 class="text-2xl font-bold text-indigo-600">
+                    Zone: <span class="text-gray-800">{{ zone.name }}</span>
+                </h1>
+            </div>
+            <div class="text-sm text-gray-500">
+                Serial: <span class="font-mono bg-gray-200 px-2 py-1 rounded">{{ zone.serial }}</span>
+            </div>
+        </div>
+
+        <!-- Zone d'erreur -->
+        {% if error %}
+        <div class="bg-red-100 border-l-4 border-red-500 text-red-700 p-4 mb-6" role="alert">
+            <p class="font-bold">Erreur</p>
+            <p>{{ error }}</p>
+        </div>
+        {% endif %}
+
+        <!-- Barre de modifications en attente -->
+        {% if has_pending_changes %}
+        <div class="bg-yellow-50 border-l-4 border-yellow-400 p-4 mb-6 flex justify-between items-center shadow">
+            <div class="flex items-center">
+                <i class="fa-solid fa-triangle-exclamation text-yellow-600 mr-3 text-xl"></i>
+                <div>
+                    <p class="font-bold text-yellow-800">Modifications en attente</p>
+                    <p class="text-sm text-yellow-700">Vous avez des changements non appliqués.</p>
+                </div>
+            </div>
+            <div class="flex gap-3">
+                <form action="/zones/{{ zone.id }}/discard" method="post"><button type="submit" class="bg-gray-500 hover:bg-gray-600 text-white font-bold py-2 px-4 rounded">Annuler</button></form>
+                <form action="/zones/{{ zone.id }}/apply" method="post"><button type="submit" class="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded">Appliquer tout</button></form>
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- Formulaire d'ajout de Record -->
+        <div class="bg-white shadow-md rounded-lg p-6 mb-8 border-t-4 border-indigo-500">
+            <h2 id="form-title" class="text-lg font-semibold mb-4">Ajouter / Modifier un enregistrement</h2>
+            <form action="/zones/{{ zone.id }}/records/add" method="post" class="grid grid-cols-1 md:grid-cols-12 gap-4 items-end">
+                
+                <!-- Nom -->
+                <div class="md:col-span-3">
+                    <label class="block text-gray-700 text-xs font-bold mb-1" for="name">Nom (sous-domaine)</label>
+                    <input class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline" 
+                           id="name" name="name" type="text" placeholder="@ ou www" 
+                           value="{{ form_data.name if form_data else '' }}" required>
+                    <p class="text-xs text-gray-500 mt-1">Utilisez '@' pour la racine.</p>
+                </div>
+
+                <!-- Type -->
+                <div class="md:col-span-2">
+                    <label class="block text-gray-700 text-xs font-bold mb-1" for="rtype">Type</label>
+                    <select class="shadow border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline" 
+                            id="rtype" name="rtype">
+                        {% set is_reverse = 'arpa' in zone.name %}
+                        {% if is_reverse %}
+                            {% set types = ['PTR', 'NS', 'TXT', 'LOC'] %}
+                        {% else %}
+                            {% set types = ['A', 'AAAA', 'CNAME', 'MX', 'TXT', 'NS', 'SRV', 'CAA', 'LOC', 'SPF'] %}
+                        {% endif %}
+                        
+                        {% for t in types %}
+                            <option value="{{ t }}" {% if (form_data and form_data.type == t) or (not form_data and t == 'A' and not is_reverse) or (not form_data and t == 'PTR' and is_reverse) %}selected{% endif %}>{{ t }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <!-- TTL -->
+                <div class="md:col-span-2">
+                    <label class="block text-gray-700 text-xs font-bold mb-1" for="ttl">TTL</label>
+                    <input class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline" 
+                           id="ttl" name="ttl" type="number" value="3600">
+                </div>
+
+                <!-- Contenu -->
+                <div class="md:col-span-4">
+                    <label class="block text-gray-700 text-xs font-bold mb-1" for="content">Contenu / Cible</label>
+                    <input class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline" 
+                           id="content" name="content" type="text" placeholder="192.168.1.1" 
+                           value="{{ form_data.content if form_data else '' }}" required>
+                </div>
+
+                <!-- Bouton -->
+                <div class="md:col-span-1">
+                    <button class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-2 rounded focus:outline-none focus:shadow-outline" type="submit">
+                        <i class="fa-solid fa-save"></i>
+                    </button>
+                </div>
+            </form>
+        </div>
+
+        <!-- Liste des Records -->
+        <div class="bg-white shadow-md rounded-lg overflow-hidden">
+            <table class="min-w-full leading-normal">
+                <thead>
+                    <tr>
+                        <th class="px-5 py-3 border-b-2 border-gray-200 bg-gray-50 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Nom</th>
+                        <th class="px-5 py-3 border-b-2 border-gray-200 bg-gray-50 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Type</th>
+                        <th class="px-5 py-3 border-b-2 border-gray-200 bg-gray-50 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">TTL</th>
+                        <th class="px-5 py-3 border-b-2 border-gray-200 bg-gray-50 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Données</th>
+                        <th class="px-5 py-3 border-b-2 border-gray-200 bg-gray-50 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider">Action</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for rrset in zone.rrsets %}
+                        {% for record in rrset.records %}
+                        {% set row_class = "hover:bg-gray-50" %}
+                        {% if rrset.status == 'deleted' %} {% set row_class = "bg-red-50 text-red-800 line-through opacity-60" %}
+                        {% elif rrset.status == 'new' %} {% set row_class = "bg-green-50 text-green-800" %}
+                        {% elif rrset.status == 'modified' %} {% set row_class = "bg-yellow-50 text-yellow-800" %}
+                        {% endif %}
+                        
+                        <tr class="{{ row_class }}">
+                            <td class="px-5 py-4 border-b border-gray-200 text-sm font-medium text-gray-900 break-all">
+                                {{ rrset.name }}
+                            </td>
+                            <td class="px-5 py-4 border-b border-gray-200 text-sm">
+                                <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full 
+                                    {% if rrset.type == 'A' %}bg-green-100 text-green-800{% elif rrset.type == 'CNAME' %}bg-blue-100 text-blue-800{% elif rrset.type == 'MX' %}bg-yellow-100 text-yellow-800{% else %}bg-gray-100 text-gray-800{% endif %}">
+                                    {{ rrset.type }}
+                                </span>
+                            </td>
+                            <td class="px-5 py-4 border-b border-gray-200 text-sm text-gray-600">
+                                {{ rrset.ttl }}
+                            </td>
+                            <td class="px-5 py-4 border-b border-gray-200 text-sm text-gray-700 break-all font-mono">
+                                {{ record.content }}
+                            </td>
+                            <td class="px-5 py-4 border-b border-gray-200 text-sm text-right">
+                                {% if rrset.status != 'deleted' %}
+                                <button onclick="editRecord('{{ rrset.name }}', '{{ rrset.type }}', '{{ rrset.ttl }}', '{{ record.content | replace("'", "\\'") }}')" 
+                                        class="text-indigo-600 hover:text-indigo-900 mr-3" title="Modifier">
+                                    <i class="fa-solid fa-pen"></i>
+                                </button>
+                                
+                                <form action="/zones/{{ zone.id }}/records/delete" method="post" onsubmit="return confirm('Supprimer cet enregistrement ?');" class="inline">
+                                    <input type="hidden" name="name" value="{{ rrset.name }}">
+                                    <input type="hidden" name="rtype" value="{{ rrset.type }}">
+                                    <button type="submit" class="text-red-600 hover:text-red-900" title="Supprimer">
+                                        <i class="fa-solid fa-trash"></i>
+                                    </button>
+                                </form>
+                                {% else %}
+                                <span class="text-xs italic">Suppression en attente</span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</body>
+</html>

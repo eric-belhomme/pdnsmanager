@@ -2,14 +2,24 @@ import httpx
 from config import settings
 
 class PowerDNSClient:
+    """Client for interacting with the PowerDNS API."""
     def __init__(self):
         self.base_url = settings.PDNS_API_URL
         self.headers = {"X-API-Key": settings.PDNS_API_KEY}
         self.server_id = settings.PDNS_SERVER_ID
+        self.timeout = httpx.Timeout(settings.PDNS_TIMEOUT)
+        self.limits = httpx.Limits(
+            max_connections=settings.PDNS_MAX_CONNECTIONS, 
+            max_keepalive_connections=settings.PDNS_MAX_KEEPALIVE
+        )
 
     async def get_zones(self):
-        """Récupère la liste de toutes les zones."""
-        async with httpx.AsyncClient() as client:
+        """Retrieves the list of all zones.
+
+        Returns:
+            list: A list of dictionaries representing the zones.
+        """
+        async with httpx.AsyncClient(timeout=self.timeout, limits=self.limits) as client:
             response = await client.get(
                 f"{self.base_url}/servers/{self.server_id}/zones",
                 headers=self.headers
@@ -18,8 +28,15 @@ class PowerDNSClient:
             return response.json()
 
     async def get_zone(self, zone_id: str):
-        """Récupère les détails d'une zone (incluant les records)."""
-        async with httpx.AsyncClient() as client:
+        """Retrieves details of a zone (including records).
+
+        Args:
+            zone_id (str): The canonical name of the zone.
+
+        Returns:
+            dict: A dictionary containing zone details and RRsets.
+        """
+        async with httpx.AsyncClient(timeout=self.timeout, limits=self.limits) as client:
             response = await client.get(
                 f"{self.base_url}/servers/{self.server_id}/zones/{zone_id}",
                 headers=self.headers
@@ -28,7 +45,16 @@ class PowerDNSClient:
             return response.json()
 
     async def create_zone(self, domain: str, kind: str = "Native", nameservers: list = None):
-        """Crée une nouvelle zone DNS."""
+        """Creates a new DNS zone.
+
+        Args:
+            domain (str): The domain name of the zone.
+            kind (str, optional): The type of zone (Native, Master, Slave). Defaults to "Native".
+            nameservers (list, optional): List of nameservers. Defaults to None.
+
+        Returns:
+            dict: The created zone details.
+        """
         if nameservers is None:
             nameservers = [f"ns1.{domain}", f"ns2.{domain}"]
             
@@ -39,7 +65,7 @@ class PowerDNSClient:
             "nameservers": nameservers
         }
         
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(timeout=self.timeout, limits=self.limits) as client:
             response = await client.post(
                 f"{self.base_url}/servers/{self.server_id}/zones",
                 headers=self.headers,
@@ -49,8 +75,15 @@ class PowerDNSClient:
             return response.json()
 
     async def delete_zone(self, zone_id: str):
-        """Supprime une zone."""
-        async with httpx.AsyncClient() as client:
+        """Deletes a zone.
+
+        Args:
+            zone_id (str): The canonical name of the zone to delete.
+
+        Returns:
+            bool: True if deletion was successful.
+        """
+        async with httpx.AsyncClient(timeout=self.timeout, limits=self.limits) as client:
             response = await client.delete(
                 f"{self.base_url}/servers/{self.server_id}/zones/{zone_id}",
                 headers=self.headers
@@ -60,9 +93,18 @@ class PowerDNSClient:
             return True
 
     async def manage_record(self, zone_id: str, name: str, rtype: str, content: list, ttl: int = 3600, changetype: str = "REPLACE"):
-        """Ajoute, modifie ou supprime des records (RRsets)."""
-        # content est une liste de valeurs. Pour supprimer, passer une liste vide et changetype="DELETE"
-        
+        """Adds, modifies or deletes records (RRsets).
+
+        To delete a record, pass an empty list for content and changetype="DELETE".
+
+        Args:
+            zone_id (str): The canonical name of the zone.
+            name (str): The name of the record (FQDN).
+            rtype (str): The DNS record type (A, MX, etc.).
+            content (list): List of content strings for the record.
+            ttl (int, optional): Time To Live. Defaults to 3600.
+            changetype (str, optional): Operation type (REPLACE or DELETE). Defaults to "REPLACE".
+        """
         records = [{"content": c, "disabled": False} for c in content]
         
         payload = {
@@ -77,7 +119,7 @@ class PowerDNSClient:
             ]
         }
         
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(timeout=self.timeout, limits=self.limits) as client:
             response = await client.patch(
                 f"{self.base_url}/servers/{self.server_id}/zones/{zone_id}",
                 headers=self.headers,
@@ -86,9 +128,14 @@ class PowerDNSClient:
             response.raise_for_status()
 
     async def batch_apply_records(self, zone_id: str, rrsets: list):
-        """Applique plusieurs modifications de records en une seule requête."""
+        """Applies multiple record modifications in a single request.
+
+        Args:
+            zone_id (str): The canonical name of the zone.
+            rrsets (list): A list of RRset dictionaries to apply.
+        """
         payload = {"rrsets": rrsets}
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(timeout=self.timeout, limits=self.limits) as client:
             response = await client.patch(
                 f"{self.base_url}/servers/{self.server_id}/zones/{zone_id}",
                 headers=self.headers,

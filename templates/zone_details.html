@@ -1,45 +1,101 @@
 <!DOCTYPE html>
-<html lang="fr">
+<html lang="{{ lang }}">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Zone: {{ zone.name }}</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <title>{{ _('zone') }}: {{ zone.name }}</title>
+    <script src="/static/js/tailwindcss.js"></script>
+    <link rel="stylesheet" href="/static/css/all.min.css">
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+        }
+    </script>
+    <script>
+        // Theme initialization
+        if (localStorage.theme === 'dark' || (!('theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+            document.documentElement.classList.add('dark')
+        } else {
+            document.documentElement.classList.remove('dark')
+        }
+
+        function setTheme(theme) {
+            if (theme === 'system') {
+                localStorage.removeItem('theme')
+                if (window.matchMedia('(prefers-color-scheme: dark)').matches) {
+                    document.documentElement.classList.add('dark');
+                } else {
+                    document.documentElement.classList.remove('dark');
+                }
+            } else {
+                localStorage.theme = theme
+                document.documentElement.classList.toggle('dark', theme === 'dark');
+            }
+        }
+
+        function setLanguage(lang) {
+            document.cookie = `pdns_lang=${lang}; path=/; max-age=31536000`;
+            window.location.reload();
+        }
+    </script>
     <script>
         function editRecord(name, type, ttl, content) {
             document.getElementById('name').value = name;
             document.getElementById('rtype').value = type;
             document.getElementById('ttl').value = ttl;
             document.getElementById('content').value = content;
-            document.getElementById('form-title').innerText = "Modifier l'enregistrement";
+            document.getElementById('form-title').innerText = "{{ _('js_edit') }}";
             window.scrollTo({ top: 0, behavior: 'smooth' });
         }
     </script>
 </head>
-<body class="bg-gray-100 text-gray-800 font-sans">
+<body class="bg-gray-100 dark:bg-gray-900 text-gray-800 dark:text-gray-100 font-sans transition-colors duration-200">
 
     <div class="container mx-auto px-4 py-8 max-w-6xl">
         
         <!-- Header & Navigation -->
         <div class="flex justify-between items-center mb-6">
             <div class="flex items-center">
-                <a href="/" class="text-gray-500 hover:text-gray-700 mr-4">
+                <a href="/" class="text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 mr-4">
                     <i class="fa-solid fa-arrow-left fa-lg"></i>
                 </a>
-                <h1 class="text-2xl font-bold text-indigo-600">
-                    Zone: <span class="text-gray-800">{{ zone.name }}</span>
+                <h1 class="text-2xl font-bold text-indigo-600 dark:text-indigo-400">
+                    {{ _('zone') }}: <span class="text-gray-800 dark:text-gray-100">{{ zone.name }}</span>
                 </h1>
             </div>
-            <div class="text-sm text-gray-500">
-                Serial: <span class="font-mono bg-gray-200 px-2 py-1 rounded">{{ zone.serial }}</span>
+            <div class="flex items-center gap-4">
+                <div class="text-sm text-gray-500 dark:text-gray-400">
+                    {{ _('serial') }}: <span class="font-mono bg-gray-200 dark:bg-gray-700 px-2 py-1 rounded">{{ zone.serial }}</span>
+                </div>
+                
+                <!-- Language Selector -->
+                <select onchange="setLanguage(this.value)" class="bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-200 py-1 px-2 rounded text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                    <option value="en" {% if lang == 'en' %}selected{% endif %}>🇬🇧 EN</option>
+                    <option value="fr" {% if lang == 'fr' %}selected{% endif %}>🇫🇷 FR</option>
+                </select>
+
+                <!-- Theme Selector -->
+                <select onchange="setTheme(this.value)" class="bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-200 py-1 px-2 rounded text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                    <option value="light">{{ _('light') }}</option>
+                    <option value="dark">{{ _('dark') }}</option>
+                    <option value="system">{{ _('system') }}</option>
+                </select>
+                <script>
+                    // Set initial value for theme selector
+                    document.querySelector('select[onchange^="setTheme"]').value = localStorage.theme || 'system';
+                </script>
+
+                <!-- Logout -->
+                <a href="/logout" class="bg-red-500 hover:bg-red-600 text-white py-1 px-3 rounded text-sm flex items-center" title="{{ _('logout') }}">
+                    <i class="fa-solid fa-sign-out-alt"></i>
+                </a>
             </div>
         </div>
 
         <!-- Zone d'erreur -->
         {% if error %}
         <div class="bg-red-100 border-l-4 border-red-500 text-red-700 p-4 mb-6" role="alert">
-            <p class="font-bold">Erreur</p>
+            <p class="font-bold">{{ _('error') }}</p>
             <p>{{ error }}</p>
         </div>
         {% endif %}
@@ -50,35 +106,35 @@
             <div class="flex items-center">
                 <i class="fa-solid fa-triangle-exclamation text-yellow-600 mr-3 text-xl"></i>
                 <div>
-                    <p class="font-bold text-yellow-800">Modifications en attente</p>
-                    <p class="text-sm text-yellow-700">Vous avez des changements non appliqués.</p>
+                    <p class="font-bold text-yellow-800">{{ _('pending') }}</p>
+                    <p class="text-sm text-yellow-700">{{ _('unapplied') }}</p>
                 </div>
             </div>
             <div class="flex gap-3">
-                <form action="/zones/{{ zone.id }}/discard" method="post"><button type="submit" class="bg-gray-500 hover:bg-gray-600 text-white font-bold py-2 px-4 rounded">Annuler</button></form>
-                <form action="/zones/{{ zone.id }}/apply" method="post"><button type="submit" class="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded">Appliquer tout</button></form>
+                <form action="/zones/{{ zone.id }}/discard" method="post"><button type="submit" class="bg-gray-500 hover:bg-gray-600 text-white font-bold py-2 px-4 rounded">{{ _('discard') }}</button></form>
+                <form action="/zones/{{ zone.id }}/apply" method="post"><button type="submit" class="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded">{{ _('apply') }}</button></form>
             </div>
         </div>
         {% endif %}
 
         <!-- Formulaire d'ajout de Record -->
-        <div class="bg-white shadow-md rounded-lg p-6 mb-8 border-t-4 border-indigo-500">
-            <h2 id="form-title" class="text-lg font-semibold mb-4">Ajouter / Modifier un enregistrement</h2>
+        <div class="bg-white dark:bg-gray-800 shadow-md rounded-lg p-6 mb-8 border-t-4 border-indigo-500 dark:border-indigo-400">
+            <h2 id="form-title" class="text-lg font-semibold mb-4 text-gray-800 dark:text-gray-100">{{ _('record_form') }}</h2>
             <form action="/zones/{{ zone.id }}/records/add" method="post" class="grid grid-cols-1 md:grid-cols-12 gap-4 items-end">
                 
                 <!-- Nom -->
                 <div class="md:col-span-3">
-                    <label class="block text-gray-700 text-xs font-bold mb-1" for="name">Nom (sous-domaine)</label>
-                    <input class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline" 
+                    <label class="block text-gray-700 dark:text-gray-300 text-xs font-bold mb-1" for="name">{{ _('rec_name') }}</label>
+                    <input class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 dark:text-gray-200 dark:bg-gray-700 dark:border-gray-600 leading-tight focus:outline-none focus:shadow-outline" 
                            id="name" name="name" type="text" placeholder="@ ou www" 
                            value="{{ form_data.name if form_data else '' }}" required>
-                    <p class="text-xs text-gray-500 mt-1">Utilisez '@' pour la racine.</p>
+                    <p class="text-xs text-gray-500 mt-1">{{ _('rec_name_help') }}</p>
                 </div>
 
                 <!-- Type -->
                 <div class="md:col-span-2">
-                    <label class="block text-gray-700 text-xs font-bold mb-1" for="rtype">Type</label>
-                    <select class="shadow border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline" 
+                    <label class="block text-gray-700 dark:text-gray-300 text-xs font-bold mb-1" for="rtype">{{ _('type') }}</label>
+                    <select class="shadow border rounded w-full py-2 px-3 text-gray-700 dark:text-gray-200 dark:bg-gray-700 dark:border-gray-600 leading-tight focus:outline-none focus:shadow-outline" 
                             id="rtype" name="rtype">
                         {% set is_reverse = 'arpa' in zone.name %}
                         {% if is_reverse %}
@@ -95,15 +151,15 @@
 
                 <!-- TTL -->
                 <div class="md:col-span-2">
-                    <label class="block text-gray-700 text-xs font-bold mb-1" for="ttl">TTL</label>
-                    <input class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline" 
+                    <label class="block text-gray-700 dark:text-gray-300 text-xs font-bold mb-1" for="ttl">{{ _('ttl') }}</label>
+                    <input class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 dark:text-gray-200 dark:bg-gray-700 dark:border-gray-600 leading-tight focus:outline-none focus:shadow-outline" 
                            id="ttl" name="ttl" type="number" value="3600">
                 </div>
 
                 <!-- Contenu -->
                 <div class="md:col-span-4">
-                    <label class="block text-gray-700 text-xs font-bold mb-1" for="content">Contenu / Cible</label>
-                    <input class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline" 
+                    <label class="block text-gray-700 dark:text-gray-300 text-xs font-bold mb-1" for="content">{{ _('content') }}</label>
+                    <input class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 dark:text-gray-200 dark:bg-gray-700 dark:border-gray-600 leading-tight focus:outline-none focus:shadow-outline" 
                            id="content" name="content" type="text" placeholder="192.168.1.1" 
                            value="{{ form_data.content if form_data else '' }}" required>
                 </div>
@@ -118,58 +174,59 @@
         </div>
 
         <!-- Liste des Records -->
-        <div class="bg-white shadow-md rounded-lg overflow-hidden">
+        <div class="bg-white dark:bg-gray-800 shadow-md rounded-lg overflow-hidden">
             <table class="min-w-full leading-normal">
                 <thead>
                     <tr>
-                        <th class="px-5 py-3 border-b-2 border-gray-200 bg-gray-50 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Nom</th>
-                        <th class="px-5 py-3 border-b-2 border-gray-200 bg-gray-50 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Type</th>
-                        <th class="px-5 py-3 border-b-2 border-gray-200 bg-gray-50 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">TTL</th>
-                        <th class="px-5 py-3 border-b-2 border-gray-200 bg-gray-50 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Données</th>
-                        <th class="px-5 py-3 border-b-2 border-gray-200 bg-gray-50 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider">Action</th>
+                        <th class="px-5 py-3 border-b-2 border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700 text-left text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase tracking-wider">{{ _('rec_col_name') }}</th>
+                        <th class="px-5 py-3 border-b-2 border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700 text-left text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase tracking-wider">{{ _('type') }}</th>
+                        <th class="px-5 py-3 border-b-2 border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700 text-left text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase tracking-wider">{{ _('ttl') }}</th>
+                        <th class="px-5 py-3 border-b-2 border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700 text-left text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase tracking-wider">{{ _('rec_col_data') }}</th>
+                        <th class="px-5 py-3 border-b-2 border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700 text-right text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase tracking-wider">{{ _('rec_col_action') }}</th>
                     </tr>
                 </thead>
                 <tbody>
                     {% for rrset in zone.rrsets %}
                         {% for record in rrset.records %}
                         {% set row_class = "hover:bg-gray-50" %}
-                        {% if rrset.status == 'deleted' %} {% set row_class = "bg-red-50 text-red-800 line-through opacity-60" %}
-                        {% elif rrset.status == 'new' %} {% set row_class = "bg-green-50 text-green-800" %}
-                        {% elif rrset.status == 'modified' %} {% set row_class = "bg-yellow-50 text-yellow-800" %}
+                        {% if rrset.status == 'deleted' %} {% set row_class = "bg-red-50 dark:bg-red-900/20 text-red-800 dark:text-red-300 line-through opacity-60" %}
+                        {% elif rrset.status == 'new' %} {% set row_class = "bg-green-50 dark:bg-green-900/20 text-green-800 dark:text-green-300" %}
+                        {% elif rrset.status == 'modified' %} {% set row_class = "bg-yellow-50 dark:bg-yellow-900/20 text-yellow-800 dark:text-yellow-300" %}
+                        {% else %} {% set row_class = "hover:bg-gray-50 dark:hover:bg-gray-700" %}
                         {% endif %}
                         
                         <tr class="{{ row_class }}">
-                            <td class="px-5 py-4 border-b border-gray-200 text-sm font-medium text-gray-900 break-all">
+                            <td class="px-5 py-4 border-b border-gray-200 dark:border-gray-700 text-sm font-medium text-gray-900 dark:text-gray-100 break-all">
                                 {{ rrset.name }}
                             </td>
-                            <td class="px-5 py-4 border-b border-gray-200 text-sm">
+                            <td class="px-5 py-4 border-b border-gray-200 dark:border-gray-700 text-sm">
                                 <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full 
                                     {% if rrset.type == 'A' %}bg-green-100 text-green-800{% elif rrset.type == 'CNAME' %}bg-blue-100 text-blue-800{% elif rrset.type == 'MX' %}bg-yellow-100 text-yellow-800{% else %}bg-gray-100 text-gray-800{% endif %}">
                                     {{ rrset.type }}
                                 </span>
                             </td>
-                            <td class="px-5 py-4 border-b border-gray-200 text-sm text-gray-600">
+                            <td class="px-5 py-4 border-b border-gray-200 dark:border-gray-700 text-sm text-gray-600 dark:text-gray-400">
                                 {{ rrset.ttl }}
                             </td>
-                            <td class="px-5 py-4 border-b border-gray-200 text-sm text-gray-700 break-all font-mono">
+                            <td class="px-5 py-4 border-b border-gray-200 dark:border-gray-700 text-sm text-gray-700 dark:text-gray-300 break-all font-mono">
                                 {{ record.content }}
                             </td>
-                            <td class="px-5 py-4 border-b border-gray-200 text-sm text-right">
+                            <td class="px-5 py-4 border-b border-gray-200 dark:border-gray-700 text-sm text-right">
                                 {% if rrset.status != 'deleted' %}
                                 <button onclick="editRecord('{{ rrset.name }}', '{{ rrset.type }}', '{{ rrset.ttl }}', '{{ record.content | replace("'", "\\'") }}')" 
-                                        class="text-indigo-600 hover:text-indigo-900 mr-3" title="Modifier">
+                                        class="text-indigo-600 dark:text-indigo-400 hover:text-indigo-900 dark:hover:text-indigo-300 mr-3" title="{{ _('edit') }}">
                                     <i class="fa-solid fa-pen"></i>
                                 </button>
                                 
-                                <form action="/zones/{{ zone.id }}/records/delete" method="post" onsubmit="return confirm('Supprimer cet enregistrement ?');" class="inline">
+                                <form action="/zones/{{ zone.id }}/records/delete" method="post" onsubmit="return confirm('{{ _('confirm_rec_del') }}');" class="inline">
                                     <input type="hidden" name="name" value="{{ rrset.name }}">
                                     <input type="hidden" name="rtype" value="{{ rrset.type }}">
-                                    <button type="submit" class="text-red-600 hover:text-red-900" title="Supprimer">
+                                    <button type="submit" class="text-red-600 dark:text-red-400 hover:text-red-900 dark:hover:text-red-300" title="{{ _('delete') }}">
                                         <i class="fa-solid fa-trash"></i>
                                     </button>
                                 </form>
                                 {% else %}
-                                <span class="text-xs italic">Suppression en attente</span>
+                                <span class="text-xs italic">{{ _('del_pending') }}</span>
                                 {% endif %}
                             </td>
                         </tr>

@@ -4,3 +4,6 @@ httpx
 jinja2
 python-multipart
 pydantic-settings
+itsdangerous
+aiofiles
+authlib

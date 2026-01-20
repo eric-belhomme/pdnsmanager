@@ -38,6 +38,54 @@
             document.cookie = `pdns_lang=${lang}; path=/; max-age=31536000`;
             window.location.reload();
         }
+
+        function sortTable(tableId, n, type) {
+            var table = document.getElementById(tableId);
+            var tbody = table.querySelector("tbody");
+            var rows = Array.from(tbody.rows);
+            var dir = table.getAttribute("data-sort-dir") === "asc" ? "desc" : "asc";
+            
+            // Reset icons in this table
+            table.querySelectorAll("th i").forEach(icon => {
+                icon.className = "sort-icon fa-solid fa-sort text-gray-400 ml-1";
+            });
+            
+            rows.sort(function(a, b) {
+                var x = a.cells[n].innerText.trim().toLowerCase();
+                var y = b.cells[n].innerText.trim().toLowerCase();
+                
+                if (tableId === 'reverse-zones-table' && n === 0) {
+                    var getParts = function(str) {
+                        if (str.indexOf('.in-addr.arpa') !== -1) {
+                            var parts = str.split('.in-addr.arpa')[0].split('.');
+                            return parts.reverse().map(function(p) { return parseInt(p, 10) || 0; });
+                        }
+                        return [str];
+                    };
+                    var xParts = getParts(x);
+                    var yParts = getParts(y);
+                    
+                    if (Array.isArray(xParts) && Array.isArray(yParts) && typeof xParts[0] === 'number') {
+                        for (var i = 0; i < Math.max(xParts.length, yParts.length); i++) {
+                            if ((xParts[i] || 0) < (yParts[i] || 0)) return dir === "asc" ? -1 : 1;
+                            if ((xParts[i] || 0) > (yParts[i] || 0)) return dir === "asc" ? 1 : -1;
+                        }
+                        return 0;
+                    }
+                }
+
+                if (type === 'number') { x = parseFloat(x) || 0; y = parseFloat(y) || 0; }
+                if (x < y) return dir === "asc" ? -1 : 1;
+                if (x > y) return dir === "asc" ? 1 : -1;
+                return 0;
+            });
+            
+            rows.forEach(row => tbody.appendChild(row));
+            
+            table.setAttribute("data-sort-dir", dir);
+            var headerIcon = table.querySelectorAll("th")[n].querySelector("i");
+            headerIcon.className = dir === "asc" ? "sort-icon fa-solid fa-sort-up text-indigo-600 ml-1" : "sort-icon fa-solid fa-sort-down text-indigo-600 ml-1";
+        }
     </script>
 </head>
 <body class="bg-gray-100 dark:bg-gray-900 text-gray-800 dark:text-gray-100 font-sans transition-colors duration-200">
@@ -57,7 +105,7 @@
                 {% endif %}
             </div>
             
-            <div class="flex gap-4">
+            <div class="flex items-center gap-4">
                 <!-- Language Selector -->
                 <select onchange="setLanguage(this.value)" class="bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-200 py-1 px-2 rounded text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
                     <option value="en" {% if lang == 'en' %}selected{% endif %}>🇬🇧 EN</option>
@@ -74,6 +122,13 @@
                     // Set initial value for theme selector
                     document.querySelector('select[onchange^="setTheme"]').value = localStorage.theme || 'system';
                 </script>
+
+                <!-- User Identity -->
+                {% if user %}
+                <div class="flex flex-col items-end">
+                    <a href="/profile" class="text-sm font-medium text-gray-600 dark:text-gray-300 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors" title="{{ user.username }}">{{ user.name }}</a>
+                </div>
+                {% endif %}
 
                 <!-- Logout -->
                 <a href="/logout" class="bg-red-500 hover:bg-red-600 text-white py-1 px-3 rounded text-sm flex items-center" title="{{ _('logout') }}">
@@ -120,11 +175,13 @@
         <!-- Zones Directes -->
         <h2 class="text-xl font-semibold mb-4 text-gray-700 dark:text-gray-300">{{ _('forward_zones') }}</h2>
         <div class="bg-white dark:bg-gray-800 shadow-md rounded-lg overflow-hidden mb-8">
-            <table class="min-w-full leading-normal">
+            <table id="forward-zones-table" class="min-w-full leading-normal">
                 <thead>
                     <tr>
-                        <th class="px-5 py-3 border-b-2 border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700 text-left text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase tracking-wider">
-                            {{ _('zone_domain') }}
+                        <th class="px-5 py-3 border-b-2 border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700 text-left text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase tracking-wider cursor-pointer select-none" onclick="sortTable('forward-zones-table', 0, 'text')">
+                            <div class="flex items-center">
+                                {{ _('zone_domain') }} <i class="sort-icon fa-solid fa-sort text-gray-400 ml-1"></i>
+                            </div>
                         </th>
                         <th class="px-5 py-3 border-b-2 border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700 text-left text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase tracking-wider">
                             {{ _('type') }}
@@ -143,9 +200,15 @@
                         <td class="px-5 py-5 border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-sm">
                             <div class="flex items-center">
                                 <div class="ml-3">
+                                    {% if zone.role != 'none' %}
                                     <a href="/zones/{{ zone.id }}" class="text-indigo-600 dark:text-indigo-400 hover:text-indigo-900 dark:hover:text-indigo-300 font-medium hover:underline">
                                         {{ zone.name }}
                                     </a>
+                                    {% else %}
+                                    <span class="text-gray-400 dark:text-gray-500 cursor-not-allowed" title="{{ _('access_denied') }}">
+                                        {{ zone.name }} <i class="fa-solid fa-lock text-xs ml-1"></i>
+                                    </span>
+                                    {% endif %}
                                 </div>
                             </div>
                         </td>
@@ -159,11 +222,13 @@
                             <p class="text-gray-900 dark:text-gray-300 whitespace-no-wrap">{{ zone.serial }}</p>
                         </td>
                         <td class="px-5 py-5 border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-sm text-right">
+                            {% if zone.role == 'owner' %}
                             <form action="/zones/delete/{{ zone.id }}" method="post" onsubmit="return confirm('{{ _('confirm_zone_del') }}');">
                                 <button type="submit" class="text-red-600 dark:text-red-400 hover:text-red-900 dark:hover:text-red-300">
                                     <i class="fa-solid fa-trash"></i> {{ _('delete') }}
                                 </button>
                             </form>
+                            {% endif %}
                         </td>
                     </tr>
                     {% else %}
@@ -180,11 +245,13 @@
         <!-- Zones Inverses -->
         <h2 class="text-xl font-semibold mb-4 text-gray-700 dark:text-gray-300">{{ _('reverse_zones') }}</h2>
         <div class="bg-white dark:bg-gray-800 shadow-md rounded-lg overflow-hidden">
-            <table class="min-w-full leading-normal">
+            <table id="reverse-zones-table" class="min-w-full leading-normal">
                 <thead>
                     <tr>
-                        <th class="px-5 py-3 border-b-2 border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700 text-left text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase tracking-wider">
-                            {{ _('zone_domain') }}
+                        <th class="px-5 py-3 border-b-2 border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700 text-left text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase tracking-wider cursor-pointer select-none" onclick="sortTable('reverse-zones-table', 0, 'text')">
+                            <div class="flex items-center">
+                                {{ _('zone_domain') }} <i class="sort-icon fa-solid fa-sort text-gray-400 ml-1"></i>
+                            </div>
                         </th>
                         <th class="px-5 py-3 border-b-2 border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700 text-left text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase tracking-wider">
                             {{ _('type') }}
@@ -203,9 +270,15 @@
                         <td class="px-5 py-5 border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-sm">
                             <div class="flex items-center">
                                 <div class="ml-3">
+                                    {% if zone.role != 'none' %}
                                     <a href="/zones/{{ zone.id }}" class="text-indigo-600 dark:text-indigo-400 hover:text-indigo-900 dark:hover:text-indigo-300 font-medium hover:underline">
                                         {{ zone.name }}
                                     </a>
+                                    {% else %}
+                                    <span class="text-gray-400 dark:text-gray-500 cursor-not-allowed" title="{{ _('access_denied') }}">
+                                        {{ zone.name }} <i class="fa-solid fa-lock text-xs ml-1"></i>
+                                    </span>
+                                    {% endif %}
                                 </div>
                             </div>
                         </td>
@@ -219,11 +292,13 @@
                             <p class="text-gray-900 dark:text-gray-300 whitespace-no-wrap">{{ zone.serial }}</p>
                         </td>
                         <td class="px-5 py-5 border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-sm text-right">
+                            {% if zone.role == 'owner' %}
                             <form action="/zones/delete/{{ zone.id }}" method="post" onsubmit="return confirm('{{ _('confirm_zone_del') }}');">
                                 <button type="submit" class="text-red-600 dark:text-red-400 hover:text-red-900 dark:hover:text-red-300">
                                     <i class="fa-solid fa-trash"></i> {{ _('delete') }}
                                 </button>
                             </form>
+                            {% endif %}
                         </td>
                     </tr>
                     {% else %}

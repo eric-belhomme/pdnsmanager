@@ -45,6 +45,8 @@
     "err_caa_int": "Le flag doit être un entier",
     "err_srv_fmt": "Format: 'priority weight port target'",
     "err_srv_int": "Priority, weight et port doivent être des entiers",
+    "err_soa_fmt": "Format attendu: 'ns hostmaster serial refresh retry expire ttl'",
+    "err_soa_int": "Serial, refresh, retry, expire et ttl doivent être des entiers",
     "native": "Natif",
     "master": "Maître",
     "slave": "Esclave",
@@ -58,5 +60,12 @@
     "username": "Nom d'utilisateur",
     "password": "Mot de passe",
     "login_oidc": "Se connecter avec SSO (OIDC)",
-    "login_failed": "Identifiants invalides"
+    "login_failed": "Identifiants invalides",
+    "access_denied": "Accès interdit",
+    "groups": "Groupes",
+    "profile": "Profil Utilisateur",
+    "user_info": "Informations",
+    "real_name": "Nom complet",
+    "oidc_claims": "Données OIDC brutes",
+    "no_groups": "Aucun groupe"
 }

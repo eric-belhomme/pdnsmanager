@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="{{ lang }}">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ _('profile') }}</title>
+    <script src="/static/js/tailwindcss.js"></script>
+    <link rel="stylesheet" href="/static/css/all.min.css">
+    <script>
+        tailwind.config = { darkMode: 'class' }
+        if (localStorage.theme === 'dark' || (!('theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+            document.documentElement.classList.add('dark')
+        } else {
+            document.documentElement.classList.remove('dark')
+        }
+    </script>
+</head>
+<body class="bg-gray-100 dark:bg-gray-900 text-gray-800 dark:text-gray-100 font-sans transition-colors duration-200">
+    <div class="container mx-auto px-4 py-8 max-w-4xl">
+        
+        <!-- Header -->
+        <div class="flex items-center mb-8">
+            <a href="/" class="text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 mr-4">
+                <i class="fa-solid fa-arrow-left fa-lg"></i>
+            </a>
+            <h1 class="text-3xl font-bold text-indigo-600 dark:text-indigo-400">{{ _('profile') }}</h1>
+        </div>
+
+        <!-- User Info Card -->
+        <div class="bg-white dark:bg-gray-800 shadow-md rounded-lg overflow-hidden mb-6">
+            <div class="px-6 py-4 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700">
+                <h2 class="text-xl font-semibold text-gray-800 dark:text-gray-100">{{ _('user_info') }}</h2>
+            </div>
+            <div class="p-6">
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-500 dark:text-gray-400">{{ _('username') }}</label>
+                        <p class="mt-1 text-lg text-gray-900 dark:text-gray-100 font-mono">{{ user.username }}</p>
+                    </div>
+                    {% if user.type == 'local' %}
+                    <form action="/profile/update" method="post" class="md:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-500 dark:text-gray-400">{{ _('real_name') }}</label>
+                            <input type="text" name="name" value="{{ user.name }}" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white sm:text-sm p-2 border">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-500 dark:text-gray-400">{{ _('email') }}</label>
+                            <input type="email" name="email" value="{{ user.email or '' }}" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white sm:text-sm p-2 border">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-500 dark:text-gray-400">{{ _('password') }}</label>
+                            <input type="password" name="password" placeholder="Leave blank to keep unchanged" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white sm:text-sm p-2 border">
+                        </div>
+                        <div class="md:col-span-2">
+                            <button type="submit" class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded">{{ _('save') }}</button>
+                        </div>
+                    </form>
+                    {% else %}
+                    <div>
+                        <label class="block text-sm font-medium text-gray-500 dark:text-gray-400">{{ _('real_name') }}</label>
+                        <p class="mt-1 text-lg text-gray-900 dark:text-gray-100">{{ user.name }}</p>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-500 dark:text-gray-400">{{ _('email') }}</label>
+                        <p class="mt-1 text-lg text-gray-900 dark:text-gray-100">{{ user.email or '-' }}</p>
+                    </div>
+                    {% endif %}
+                    <div>
+                        <label class="block text-sm font-medium text-gray-500 dark:text-gray-400">{{ _('type') }}</label>
+                        <span class="mt-1 inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium {{ 'bg-green-100 text-green-800' if user.type == 'oidc' else 'bg-gray-100 text-gray-800' }}">
+                            {{ user.type|upper }}
+                        </span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Groups -->
+        <div class="bg-white dark:bg-gray-800 shadow-md rounded-lg overflow-hidden mb-6">
+            <div class="px-6 py-4 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700">
+                <h2 class="text-xl font-semibold text-gray-800 dark:text-gray-100">{{ _('groups') }}</h2>
+            </div>
+            <div class="p-6">
+                {% if user.groups %}
+                <div class="flex flex-wrap gap-2">
+                    {% for group in user.groups %}
+                    <span class="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-indigo-100 text-indigo-800 dark:bg-indigo-900 dark:text-indigo-200">
+                        <i class="fa-solid fa-users mr-2 text-xs"></i> {{ group }}
+                    </span>
+                    {% endfor %}
+                </div>
+                {% else %}
+                <p class="text-gray-500 dark:text-gray-400 italic">{{ _('no_groups') }}</p>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- OIDC Raw Info -->
+        {% if user.type == 'oidc' and user.oidc_info %}
+        <div class="bg-white dark:bg-gray-800 shadow-md rounded-lg overflow-hidden">
+            <div class="px-6 py-4 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700">
+                <h2 class="text-xl font-semibold text-gray-800 dark:text-gray-100">{{ _('oidc_claims') }}</h2>
+            </div>
+            <div class="overflow-x-auto">
+                <table class="min-w-full text-sm text-left">
+                    <thead class="text-xs text-gray-700 uppercase bg-gray-50 dark:bg-gray-700 dark:text-gray-400">
+                        <tr>
+                            <th scope="col" class="px-6 py-3">Claim</th>
+                            <th scope="col" class="px-6 py-3">Value</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for key, value in user.oidc_info.items() %}
+                        <tr class="bg-white border-b dark:bg-gray-800 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600">
+                            <td class="px-6 py-4 font-medium text-gray-900 dark:text-white whitespace-nowrap font-mono">{{ key }}</td>
+                            <td class="px-6 py-4 text-gray-500 dark:text-gray-400 break-all font-mono text-xs">
+                                {{ value }}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+</body>
+</html>

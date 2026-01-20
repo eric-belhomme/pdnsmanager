@@ -10,11 +10,11 @@ class Settings(BaseSettings):
     
     # Authentication
     SECRET_KEY: str = "change-me-in-production"
-    LOCAL_USER: str = "admin"
-    LOCAL_PASSWORD: str = "password"
     OIDC_CLIENT_ID: str = ""
     OIDC_CLIENT_SECRET: str = ""
     OIDC_DISCOVERY_URL: str = ""
+    SESSION_MAX_AGE: int = 3600
+    DATABASE_URL: str = "sqlite+aiosqlite:///rbac.db"
 
     class Config:
         env_file = ".env"

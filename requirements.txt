@@ -7,3 +7,8 @@ pydantic-settings
 itsdangerous
 aiofiles
 authlib
+sqlalchemy
+aiosqlite
+pyyaml
+sqlalchemy
+argon2-cffi

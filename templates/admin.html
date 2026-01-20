@@ -1,0 +1,328 @@
+<!DOCTYPE html>
+<html lang="{{ lang }}">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin - PowerDNS Manager</title>
+    <script src="/static/js/tailwindcss.js"></script>
+    <link rel="stylesheet" href="/static/css/all.min.css">
+    <script>
+        function renameGroup(id, currentName) {
+            const newName = prompt("New group name:", currentName);
+            if (newName && newName !== currentName) {
+                const form = document.getElementById('rename-group-form');
+                form.id.value = id;
+                form.name.value = newName;
+                form.submit();
+            }
+        }
+
+        function editPolicy(id, zone, entity, role) {
+            const form = document.getElementById('policy-form');
+            form.action = "/admin/policies/update";
+            
+            // Add hidden ID input if not exists
+            let idInput = form.querySelector('input[name="id"]');
+            if (!idInput) {
+                idInput = document.createElement('input');
+                idInput.type = 'hidden';
+                idInput.name = 'id';
+                form.appendChild(idInput);
+            }
+            idInput.value = id;
+            form.zone_name.value = zone;
+            form.entity_name.value = entity;
+            form.role.value = role;
+            form.querySelector('button[type="submit"]').innerText = "Update Policy";
+        }
+
+        function editUser(username, name, email) {
+            const form = document.getElementById('user-form');
+            form.action = "/admin/users/update";
+            
+            form.username.value = username;
+            form.username.readOnly = true;
+            form.name.value = name;
+            form.email.value = email == 'None' ? '' : email;
+            form.password.placeholder = "Leave blank to keep unchanged";
+            form.querySelector('button[type="submit"]').innerText = "Update User";
+        }
+
+        // Data from backend
+        const allUsers = [
+            {% for u in users_list %}
+            { username: "{{ u.username }}", name: "{{ u.name }}" },
+            {% endfor %}
+        ];
+        const allMembers = [
+            {% for m in members %}
+            { group: "{{ m.group_name }}", username: "{{ m.username }}" },
+            {% endfor %}
+        ];
+
+        let currentGroup = "";
+
+        function initGroupMembers() {
+            const select = document.getElementById('group-select');
+            if (select.options.length > 0) {
+                currentGroup = select.value;
+                renderLists();
+            }
+            select.addEventListener('change', (e) => {
+                currentGroup = e.target.value;
+                renderLists();
+            });
+        }
+
+        function renderLists() {
+            const availableList = document.getElementById('available-users');
+            const membersList = document.getElementById('group-members');
+            
+            availableList.innerHTML = '';
+            membersList.innerHTML = '';
+
+            const groupMembers = allMembers.filter(m => m.group === currentGroup).map(m => m.username);
+
+            allUsers.forEach(user => {
+                const li = document.createElement('li');
+                li.className = "p-2 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 flex justify-between items-center";
+                li.innerHTML = `<span>${user.name} <span class="text-xs text-gray-500">(${user.username})</span></span>`;
+                
+                if (groupMembers.includes(user.username)) {
+                    li.onclick = () => toggleMember(user.username, 'remove');
+                    li.innerHTML += '<i class="fa-solid fa-arrow-left text-red-500"></i>';
+                    membersList.appendChild(li);
+                } else {
+                    li.onclick = () => toggleMember(user.username, 'add');
+                    li.innerHTML += '<i class="fa-solid fa-arrow-right text-green-500"></i>';
+                    availableList.appendChild(li);
+                }
+            });
+        }
+
+        async function toggleMember(username, action) {
+            const formData = new FormData();
+            formData.append('group_name', currentGroup);
+            formData.append('username', username);
+
+            const url = action === 'add' ? '/admin/members/add' : '/admin/members/remove';
+            
+            try {
+                const response = await fetch(url, {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                if (response.ok) {
+                    // Update local data
+                    if (action === 'add') {
+                        allMembers.push({ group: currentGroup, username: username });
+                    } else {
+                        const index = allMembers.findIndex(m => m.group === currentGroup && m.username === username);
+                        if (index > -1) allMembers.splice(index, 1);
+                    }
+                    renderLists();
+                } else {
+                    alert('Error updating membership');
+                }
+            } catch (e) {
+                console.error(e);
+                alert('Network error');
+            }
+        }
+
+        document.addEventListener('DOMContentLoaded', initGroupMembers);
+    </script>
+</head>
+<body class="bg-gray-100 dark:bg-gray-900 text-gray-800 dark:text-gray-200">
+    <nav class="bg-white dark:bg-gray-800 shadow mb-8">
+        <div class="container mx-auto px-4 py-4 flex justify-between items-center">
+            <a href="/" class="text-xl font-bold">PowerDNS Manager</a>
+            <div class="flex items-center gap-4">
+                <a href="/" class="hover:underline">Back to Zones</a>
+                <span>{{ user.name }}</span>
+                <a href="/logout" class="text-red-500 hover:underline">{{ _('logout') }}</a>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container mx-auto px-4 pb-12">
+        <h1 class="text-3xl font-bold mb-8">Administration</h1>
+
+        <!-- Hidden form for group renaming -->
+        <form id="rename-group-form" action="/admin/groups/rename" method="post" class="hidden">
+            <input type="hidden" name="id">
+            <input type="hidden" name="name">
+        </form>
+
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+            <!-- Users Management -->
+            <div class="bg-white dark:bg-gray-800 p-6 rounded shadow lg:col-span-2">
+                <h2 class="text-xl font-bold mb-4">Users</h2>
+                <form id="user-form" action="/admin/users/add" method="post" class="flex flex-wrap gap-2 mb-4">
+                    <input type="text" name="username" placeholder="Username" required class="flex-1 p-2 border rounded dark:bg-gray-700 dark:border-gray-600 min-w-[150px]">
+                    <input type="text" name="name" placeholder="Display Name" class="flex-1 p-2 border rounded dark:bg-gray-700 dark:border-gray-600 min-w-[150px]">
+                    <input type="email" name="email" placeholder="Email" class="flex-1 p-2 border rounded dark:bg-gray-700 dark:border-gray-600 min-w-[150px]">
+                    <input type="password" name="password" placeholder="Password" class="flex-1 p-2 border rounded dark:bg-gray-700 dark:border-gray-600 min-w-[150px]">
+                    <button type="submit" class="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600">Add User</button>
+                </form>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left">
+                        <thead>
+                            <tr class="border-b dark:border-gray-700">
+                                <th class="py-2">Username</th>
+                                <th class="py-2">Name</th>
+                                <th class="py-2">Email</th>
+                                <th class="py-2">Type</th>
+                                <th class="py-2">Action</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y dark:divide-gray-700">
+                            {% for u in users_list %}
+                            <tr>
+                                <td class="py-2">{{ u.username }}</td>
+                                <td class="py-2">{{ u.name }}</td>
+                                <td class="py-2">{{ u.email or '-' }}</td>
+                                <td class="py-2">
+                                    <span class="px-2 py-1 rounded text-xs font-bold {% if u.type == 'local' %}bg-blue-100 text-blue-800{% else %}bg-purple-100 text-purple-800{% endif %}">
+                                        {{ u.type }}
+                                    </span>
+                                </td>
+                                <td class="py-2 flex gap-3">
+                                    {% if u.type == 'local' %}
+                                    <button onclick="editUser('{{ u.username }}', '{{ u.name }}', '{{ u.email }}')" class="text-blue-500 hover:text-blue-700" title="Edit">
+                                        <i class="fa-solid fa-pen"></i>
+                                    </button>
+                                    <form action="/admin/users/delete" method="post" onsubmit="return confirm('Delete user?');" class="inline">
+                                        <input type="hidden" name="username" value="{{ u.username }}">
+                                        <button type="submit" class="text-red-500 hover:text-red-700" title="Delete">
+                                            <i class="fa-solid fa-trash"></i>
+                                        </button>
+                                    </form>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Groups Management -->
+            <div class="bg-white dark:bg-gray-800 p-6 rounded shadow">
+                <h2 class="text-xl font-bold mb-4">Groups</h2>
+                <form action="/admin/groups/add" method="post" class="flex gap-2 mb-4">
+                    <input type="text" name="name" placeholder="Group Name" required class="flex-1 p-2 border rounded dark:bg-gray-700 dark:border-gray-600">
+                    <button type="submit" class="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600">Add</button>
+                </form>
+                <ul class="divide-y dark:divide-gray-700">
+                    {% for group in groups %}
+                    <li class="py-2 flex justify-between items-center">
+                        <span>
+                            {{ group.name }}
+                            <span class="ml-2 text-xs px-2 py-0.5 rounded-full {% if group.type == 'local' %}bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200{% else %}bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200{% endif %}">
+                                {{ group.type }}
+                            </span>
+                        </span>
+                        <div class="flex items-center gap-2">
+                            {% if group.type == 'local' %}
+                            <button onclick="renameGroup('{{ group.id }}', '{{ group.name }}')" class="text-blue-500 hover:text-blue-700" title="Rename">
+                                <i class="fa-solid fa-pen"></i>
+                            </button>
+                            {% else %}
+                            <span class="text-gray-400 cursor-not-allowed" title="Cannot rename external group">
+                                <i class="fa-solid fa-pen"></i>
+                            </span>
+                            {% endif %}
+                            <form action="/admin/groups/delete" method="post" onsubmit="return confirm('Delete group?');" class="inline">
+                                <input type="hidden" name="id" value="{{ group.id }}">
+                                <button type="submit" class="text-red-500 hover:text-red-700" title="Delete">
+                                    <i class="fa-solid fa-trash"></i>
+                                </button>
+                            </form>
+                        </div>
+                    </li>
+                    {% endfor %}
+                </ul>
+            </div>
+
+            <!-- Members Management -->
+            <div class="bg-white dark:bg-gray-800 p-6 rounded shadow">
+                <h2 class="text-xl font-bold mb-4">Manage Members</h2>
+                <div class="mb-4">
+                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Select Group</label>
+                    <select id="group-select" class="w-full p-2 border rounded dark:bg-gray-700 dark:border-gray-600">
+                        {% for group in groups %}
+                        <option value="{{ group.name }}">{{ group.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                
+                <div class="grid grid-cols-2 gap-4 h-96">
+                    <div class="flex flex-col">
+                        <h3 class="font-semibold mb-2 text-sm text-gray-500 uppercase">Available Users</h3>
+                        <ul id="available-users" class="flex-1 border rounded dark:border-gray-700 overflow-y-auto bg-gray-50 dark:bg-gray-900/50 divide-y dark:divide-gray-700"></ul>
+                    </div>
+                    <div class="flex flex-col">
+                        <h3 class="font-semibold mb-2 text-sm text-gray-500 uppercase">Group Members</h3>
+                        <ul id="group-members" class="flex-1 border rounded dark:border-gray-700 overflow-y-auto bg-gray-50 dark:bg-gray-900/50 divide-y dark:divide-gray-700"></ul>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Policies Management -->
+            <div class="bg-white dark:bg-gray-800 p-6 rounded shadow lg:col-span-2">
+                <h2 class="text-xl font-bold mb-4">Access Policies</h2>
+                <form id="policy-form" action="/admin/policies/add" method="post" class="flex flex-wrap gap-2 mb-4">
+                    <input type="text" name="zone_name" placeholder="Zone (e.g. example.com or *)" required class="flex-1 p-2 border rounded dark:bg-gray-700 dark:border-gray-600 min-w-[200px]">
+                    <input type="text" name="entity_name" placeholder="Entity (User or Group)" required class="flex-1 p-2 border rounded dark:bg-gray-700 dark:border-gray-600 min-w-[200px]">
+                    <select name="role" class="p-2 border rounded dark:bg-gray-700 dark:border-gray-600">
+                        <option value="read">Read</option>
+                        <option value="write">Write</option>
+                        <option value="owner">Owner</option>
+                        <option value="none">None</option>
+                    </select>
+                    <button type="submit" class="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600">Add Policy</button>
+                </form>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left">
+                        <thead>
+                            <tr class="border-b dark:border-gray-700">
+                                <th class="py-2">Zone</th>
+                                <th class="py-2">Entity</th>
+                                <th class="py-2">Role</th>
+                                <th class="py-2">Action</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y dark:divide-gray-700">
+                            {% for policy in policies %}
+                            <tr>
+                                <td class="py-2">{{ policy.zone_name }}</td>
+                                <td class="py-2">{{ policy.entity_name }}</td>
+                                <td class="py-2">
+                                    <span class="px-2 py-1 rounded text-xs font-bold
+                                        {% if policy.role == 'owner' %}bg-red-100 text-red-800{% elif policy.role == 'write' %}bg-yellow-100 text-yellow-800{% elif policy.role == 'read' %}bg-green-100 text-green-800{% else %}bg-gray-100 text-gray-800{% endif %}">
+                                        {{ policy.role }}
+                                    </span>
+                                </td>
+                                <td class="py-2 flex gap-3">
+                                    <button onclick="editPolicy('{{ policy.id }}', '{{ policy.zone_name }}', '{{ policy.entity_name }}', '{{ policy.role }}')" class="text-blue-500 hover:text-blue-700" title="Edit">
+                                        <i class="fa-solid fa-pen"></i>
+                                    </button>
+                                    <form action="/admin/policies/delete" method="post" onsubmit="return confirm('Delete policy?');" class="inline">
+                                        <input type="hidden" name="id" value="{{ policy.id }}">
+                                        <button type="submit" class="text-red-500 hover:text-red-700" title="Delete">
+                                            <i class="fa-solid fa-trash"></i>
+                                        </button>
+                                    </form>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

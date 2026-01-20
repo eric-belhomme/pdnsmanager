@@ -1,11 +1,8 @@
-<!DOCTYPE html>
-<html lang="{{ lang }}">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Admin - PowerDNS Manager</title>
-    <script src="/static/js/tailwindcss.js"></script>
-    <link rel="stylesheet" href="/static/css/all.min.css">
+{% extends "base.html" %}
+
+{% block title %}Admin - PowerDNS Manager{% endblock %}
+
+{% block scripts %}
     <script>
         function renameGroup(id, currentName) {
             const newName = prompt("New group name:", currentName);
@@ -133,21 +130,16 @@
 
         document.addEventListener('DOMContentLoaded', initGroupMembers);
     </script>
-</head>
-<body class="bg-gray-100 dark:bg-gray-900 text-gray-800 dark:text-gray-200">
-    <nav class="bg-white dark:bg-gray-800 shadow mb-8">
-        <div class="container mx-auto px-4 py-4 flex justify-between items-center">
-            <a href="/" class="text-xl font-bold">PowerDNS Manager</a>
-            <div class="flex items-center gap-4">
-                <a href="/" class="hover:underline">Back to Zones</a>
-                <span>{{ user.name }}</span>
-                <a href="/logout" class="text-red-500 hover:underline">{{ _('logout') }}</a>
-            </div>
-        </div>
-    </nav>
+{% endblock %}
 
-    <div class="container mx-auto px-4 pb-12">
-        <h1 class="text-3xl font-bold mb-8">Administration</h1>
+{% block header_left %}
+<a href="/" class="text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 mr-4">
+    <i class="fa-solid fa-arrow-left fa-lg"></i>
+</a>
+<h1 class="text-2xl font-bold text-indigo-600 dark:text-indigo-400">Administration</h1>
+{% endblock %}
+
+{% block content %}
 
         <!-- Hidden form for group renaming -->
         <form id="rename-group-form" action="/admin/groups/rename" method="post" class="hidden">
@@ -164,7 +156,7 @@
                     <input type="text" name="name" placeholder="Display Name" class="flex-1 p-2 border rounded dark:bg-gray-700 dark:border-gray-600 min-w-[150px]">
                     <input type="email" name="email" placeholder="Email" class="flex-1 p-2 border rounded dark:bg-gray-700 dark:border-gray-600 min-w-[150px]">
                     <input type="password" name="password" placeholder="Password" class="flex-1 p-2 border rounded dark:bg-gray-700 dark:border-gray-600 min-w-[150px]">
-                    <button type="submit" class="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600">Add User</button>
+                    <button type="submit" class="bg-indigo-600 text-white px-4 py-2 rounded hover:bg-indigo-700">Add User</button>
                 </form>
                 <div class="overflow-x-auto">
                     <table class="w-full text-left">
@@ -184,13 +176,13 @@
                                 <td class="py-2">{{ u.name }}</td>
                                 <td class="py-2">{{ u.email or '-' }}</td>
                                 <td class="py-2">
-                                    <span class="px-2 py-1 rounded text-xs font-bold {% if u.type == 'local' %}bg-blue-100 text-blue-800{% else %}bg-purple-100 text-purple-800{% endif %}">
+                                    <span class="px-2 py-1 rounded text-xs font-bold {% if u.type == 'local' %}bg-indigo-100 text-indigo-800{% else %}bg-purple-100 text-purple-800{% endif %}">
                                         {{ u.type }}
                                     </span>
                                 </td>
                                 <td class="py-2 flex gap-3">
                                     {% if u.type == 'local' %}
-                                    <button onclick="editUser('{{ u.username }}', '{{ u.name }}', '{{ u.email }}')" class="text-blue-500 hover:text-blue-700" title="Edit">
+                                    <button onclick="editUser('{{ u.username }}', '{{ u.name }}', '{{ u.email }}')" class="text-indigo-600 hover:text-indigo-900" title="Edit">
                                         <i class="fa-solid fa-pen"></i>
                                     </button>
                                     <form action="/admin/users/delete" method="post" onsubmit="return confirm('Delete user?');" class="inline">
@@ -213,20 +205,20 @@
                 <h2 class="text-xl font-bold mb-4">Groups</h2>
                 <form action="/admin/groups/add" method="post" class="flex gap-2 mb-4">
                     <input type="text" name="name" placeholder="Group Name" required class="flex-1 p-2 border rounded dark:bg-gray-700 dark:border-gray-600">
-                    <button type="submit" class="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600">Add</button>
+                    <button type="submit" class="bg-indigo-600 text-white px-4 py-2 rounded hover:bg-indigo-700">Add</button>
                 </form>
                 <ul class="divide-y dark:divide-gray-700">
                     {% for group in groups %}
                     <li class="py-2 flex justify-between items-center">
                         <span>
                             {{ group.name }}
-                            <span class="ml-2 text-xs px-2 py-0.5 rounded-full {% if group.type == 'local' %}bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200{% else %}bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200{% endif %}">
+                            <span class="ml-2 text-xs px-2 py-0.5 rounded-full {% if group.type == 'local' %}bg-indigo-100 text-indigo-800 dark:bg-indigo-900 dark:text-indigo-200{% else %}bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200{% endif %}">
                                 {{ group.type }}
                             </span>
                         </span>
                         <div class="flex items-center gap-2">
                             {% if group.type == 'local' %}
-                            <button onclick="renameGroup('{{ group.id }}', '{{ group.name }}')" class="text-blue-500 hover:text-blue-700" title="Rename">
+                            <button onclick="renameGroup('{{ group.id }}', '{{ group.name }}')" class="text-indigo-600 hover:text-indigo-900" title="Rename">
                                 <i class="fa-solid fa-pen"></i>
                             </button>
                             {% else %}
@@ -282,7 +274,7 @@
                         <option value="owner">Owner</option>
                         <option value="none">None</option>
                     </select>
-                    <button type="submit" class="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600">Add Policy</button>
+                    <button type="submit" class="bg-indigo-600 text-white px-4 py-2 rounded hover:bg-indigo-700">Add Policy</button>
                 </form>
                 <div class="overflow-x-auto">
                     <table class="w-full text-left">
@@ -306,7 +298,7 @@
                                     </span>
                                 </td>
                                 <td class="py-2 flex gap-3">
-                                    <button onclick="editPolicy('{{ policy.id }}', '{{ policy.zone_name }}', '{{ policy.entity_name }}', '{{ policy.role }}')" class="text-blue-500 hover:text-blue-700" title="Edit">
+                                    <button onclick="editPolicy('{{ policy.id }}', '{{ policy.zone_name }}', '{{ policy.entity_name }}', '{{ policy.role }}')" class="text-indigo-600 hover:text-indigo-900" title="Edit">
                                         <i class="fa-solid fa-pen"></i>
                                     </button>
                                     <form action="/admin/policies/delete" method="post" onsubmit="return confirm('Delete policy?');" class="inline">
@@ -323,6 +315,4 @@
                 </div>
             </div>
         </div>
-    </div>
-</body>
-</html>
+{% endblock %}

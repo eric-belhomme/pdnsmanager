@@ -1,141 +1,69 @@
-<!DOCTYPE html>
-<html lang="{{ lang }}">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{{ _('title') }}</title>
-    <script src="/static/js/tailwindcss.js"></script>
-    <!-- Ajout d'icônes pour le style -->
-    <link rel="stylesheet" href="/static/css/all.min.css">
-    <script>
-        tailwind.config = {
-            darkMode: 'class',
-        }
-    </script>
-    <script>
-        // Theme initialization
-        if (localStorage.theme === 'dark' || (!('theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
-            document.documentElement.classList.add('dark')
-        } else {
-            document.documentElement.classList.remove('dark')
-        }
+{% extends "base.html" %}
 
-        function setTheme(theme) {
-            if (theme === 'system') {
-                localStorage.removeItem('theme')
-                if (window.matchMedia('(prefers-color-scheme: dark)').matches) {
-                    document.documentElement.classList.add('dark');
-                } else {
-                    document.documentElement.classList.remove('dark');
-                }
-            } else {
-                localStorage.theme = theme
-                document.documentElement.classList.toggle('dark', theme === 'dark');
-            }
-        }
-
-        function setLanguage(lang) {
-            document.cookie = `pdns_lang=${lang}; path=/; max-age=31536000`;
-            window.location.reload();
-        }
-
-        function sortTable(tableId, n, type) {
-            var table = document.getElementById(tableId);
-            var tbody = table.querySelector("tbody");
-            var rows = Array.from(tbody.rows);
-            var dir = table.getAttribute("data-sort-dir") === "asc" ? "desc" : "asc";
-            
-            // Reset icons in this table
-            table.querySelectorAll("th i").forEach(icon => {
-                icon.className = "sort-icon fa-solid fa-sort text-gray-400 ml-1";
-            });
-            
-            rows.sort(function(a, b) {
-                var x = a.cells[n].innerText.trim().toLowerCase();
-                var y = b.cells[n].innerText.trim().toLowerCase();
-                
-                if (tableId === 'reverse-zones-table' && n === 0) {
-                    var getParts = function(str) {
-                        if (str.indexOf('.in-addr.arpa') !== -1) {
-                            var parts = str.split('.in-addr.arpa')[0].split('.');
-                            return parts.reverse().map(function(p) { return parseInt(p, 10) || 0; });
-                        }
-                        return [str];
-                    };
-                    var xParts = getParts(x);
-                    var yParts = getParts(y);
-                    
-                    if (Array.isArray(xParts) && Array.isArray(yParts) && typeof xParts[0] === 'number') {
-                        for (var i = 0; i < Math.max(xParts.length, yParts.length); i++) {
-                            if ((xParts[i] || 0) < (yParts[i] || 0)) return dir === "asc" ? -1 : 1;
-                            if ((xParts[i] || 0) > (yParts[i] || 0)) return dir === "asc" ? 1 : -1;
-                        }
-                        return 0;
-                    }
-                }
-
-                if (type === 'number') { x = parseFloat(x) || 0; y = parseFloat(y) || 0; }
-                if (x < y) return dir === "asc" ? -1 : 1;
-                if (x > y) return dir === "asc" ? 1 : -1;
-                return 0;
-            });
-            
-            rows.forEach(row => tbody.appendChild(row));
-            
-            table.setAttribute("data-sort-dir", dir);
-            var headerIcon = table.querySelectorAll("th")[n].querySelector("i");
-            headerIcon.className = dir === "asc" ? "sort-icon fa-solid fa-sort-up text-indigo-600 ml-1" : "sort-icon fa-solid fa-sort-down text-indigo-600 ml-1";
-        }
-    </script>
-</head>
-<body class="bg-gray-100 dark:bg-gray-900 text-gray-800 dark:text-gray-100 font-sans transition-colors duration-200">
-
-    <div class="container mx-auto px-4 py-8 max-w-5xl">
+{% block scripts %}
+<script>
+    function sortTable(tableId, n, type) {
+        var table = document.getElementById(tableId);
+        var tbody = table.querySelector("tbody");
+        var rows = Array.from(tbody.rows);
+        var dir = table.getAttribute("data-sort-dir") === "asc" ? "desc" : "asc";
         
-        <!-- Header -->
-        <div class="flex justify-between items-center mb-8">
-            <div class="flex items-center">
-                <h1 class="text-3xl font-bold text-indigo-600 dark:text-indigo-400 mr-4">
-                    <i class="fa-solid fa-network-wired mr-2"></i> PDNS Manager
-                </h1>
-                {% if error %}
-                <span class="bg-red-100 text-red-800 text-xs font-semibold px-2.5 py-0.5 rounded dark:bg-red-900 dark:text-red-200">{{ _('api_disconnected') }}</span>
-                {% else %}
-                <span class="bg-green-100 text-green-800 text-xs font-semibold px-2.5 py-0.5 rounded dark:bg-green-900 dark:text-green-200">{{ _('api_connected') }}</span>
-                {% endif %}
-            </div>
+        // Reset icons in this table
+        table.querySelectorAll("th i").forEach(icon => {
+            icon.className = "sort-icon fa-solid fa-sort text-gray-400 ml-1";
+        });
+        
+        rows.sort(function(a, b) {
+            var x = a.cells[n].innerText.trim().toLowerCase();
+            var y = b.cells[n].innerText.trim().toLowerCase();
             
-            <div class="flex items-center gap-4">
-                <!-- Language Selector -->
-                <select onchange="setLanguage(this.value)" class="bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-200 py-1 px-2 rounded text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
-                    <option value="en" {% if lang == 'en' %}selected{% endif %}>🇬🇧 EN</option>
-                    <option value="fr" {% if lang == 'fr' %}selected{% endif %}>🇫🇷 FR</option>
-                </select>
+            if (tableId === 'reverse-zones-table' && n === 0) {
+                var getParts = function(str) {
+                    if (str.indexOf('.in-addr.arpa') !== -1) {
+                        var parts = str.split('.in-addr.arpa')[0].split('.');
+                        return parts.reverse().map(function(p) { return parseInt(p, 10) || 0; });
+                    }
+                    return [str];
+                };
+                var xParts = getParts(x);
+                var yParts = getParts(y);
+                
+                if (Array.isArray(xParts) && Array.isArray(yParts) && typeof xParts[0] === 'number') {
+                    for (var i = 0; i < Math.max(xParts.length, yParts.length); i++) {
+                        if ((xParts[i] || 0) < (yParts[i] || 0)) return dir === "asc" ? -1 : 1;
+                        if ((xParts[i] || 0) > (yParts[i] || 0)) return dir === "asc" ? 1 : -1;
+                    }
+                    return 0;
+                }
+            }
 
-                <!-- Theme Selector -->
-                <select onchange="setTheme(this.value)" class="bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-200 py-1 px-2 rounded text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
-                    <option value="light">{{ _('light') }}</option>
-                    <option value="dark">{{ _('dark') }}</option>
-                    <option value="system">{{ _('system') }}</option>
-                </select>
-                <script>
-                    // Set initial value for theme selector
-                    document.querySelector('select[onchange^="setTheme"]').value = localStorage.theme || 'system';
-                </script>
+            if (type === 'number') { x = parseFloat(x) || 0; y = parseFloat(y) || 0; }
+            if (x < y) return dir === "asc" ? -1 : 1;
+            if (x > y) return dir === "asc" ? 1 : -1;
+            return 0;
+        });
+        
+        rows.forEach(row => tbody.appendChild(row));
+        
+        table.setAttribute("data-sort-dir", dir);
+        var headerIcon = table.querySelectorAll("th")[n].querySelector("i");
+        headerIcon.className = dir === "asc" ? "sort-icon fa-solid fa-sort-up text-indigo-600 ml-1" : "sort-icon fa-solid fa-sort-down text-indigo-600 ml-1";
+    }
+</script>
+{% endblock %}
 
-                <!-- User Identity -->
-                {% if user %}
-                <div class="flex flex-col items-end">
-                    <a href="/profile" class="text-sm font-medium text-gray-600 dark:text-gray-300 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors" title="{{ user.username }}">{{ user.name }}</a>
-                </div>
-                {% endif %}
+{% block header_left %}
+<h1 class="text-3xl font-bold text-indigo-600 dark:text-indigo-400 mr-4">
+    <i class="fa-solid fa-network-wired mr-2"></i> PDNS Manager
+</h1>
+{% if error %}
+<span class="bg-red-100 text-red-800 text-xs font-semibold px-2.5 py-0.5 rounded dark:bg-red-900 dark:text-red-200">{{ _('api_disconnected') }}</span>
+{% else %}
+<span class="bg-green-100 text-green-800 text-xs font-semibold px-2.5 py-0.5 rounded dark:bg-green-900 dark:text-green-200">{{ _('api_connected') }}</span>
+{% endif %}
+{% endblock %}
 
-                <!-- Logout -->
-                <a href="/logout" class="bg-red-500 hover:bg-red-600 text-white py-1 px-3 rounded text-sm flex items-center" title="{{ _('logout') }}">
-                    <i class="fa-solid fa-sign-out-alt"></i>
-                </a>
-            </div>
-        </div>
+{% block content %}
 
         <!-- Zone d'erreur -->
         {% if error %}
@@ -311,6 +239,4 @@
                 </tbody>
             </table>
         </div>
-    </div>
-</body>
-</html>
+{% endblock %}

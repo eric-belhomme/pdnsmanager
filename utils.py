@@ -68,7 +68,7 @@ def validate_record(rtype: str, content: str, lang: str = "en"):
         if not content: return False, t["err_empty"]
     elif rtype == 'SOA':
         parts = content.split()
-        if len(parts) != 7: return False, t.get("err_soa_fmt", "Format: primary hostmaster serial refresh retry expire default_ttl")
-        if not all(p.isdigit() for p in parts[2:]): return False, t.get("err_soa_int", "Serial, refresh, retry, expire and default_ttl must be integers")
+        if len(parts) != 7: return False, t["err_soa_fmt"]
+        if not all(p.isdigit() for p in parts[2:]): return False, t["err_soa_int"]
     
     return True, ""

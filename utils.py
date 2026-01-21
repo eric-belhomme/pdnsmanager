@@ -72,3 +72,15 @@ def validate_record(rtype: str, content: str, lang: str = "en"):
         if not all(p.isdigit() for p in parts[2:]): return False, t["err_soa_int"]
     
     return True, ""
+
+def check_policy_match(policy_zone: str, zone_name: str) -> bool:
+    """Checks if a zone name matches a policy zone pattern (supports wildcards)."""
+    if policy_zone == '*':
+        return True
+    if policy_zone == zone_name:
+        return True
+    if policy_zone.startswith('*.'):
+        suffix = policy_zone[2:]
+        if zone_name.endswith("." + suffix):
+            return True
+    return False

@@ -10,6 +10,8 @@ from .routes import router as zones_router
 from .rbac import rbac
 from . import BASE_DIR
 
+__version__ = "0.0.1"
+
 app = FastAPI(title="PowerDNS Manager")
 app.add_middleware(SessionMiddleware, secret_key=settings.SECRET_KEY, max_age=settings.SESSION_MAX_AGE)
 app.mount("/static", StaticFiles(directory=BASE_DIR / "static"), name="static")
@@ -127,3 +129,8 @@ async def update_profile(request: Request, name: str = Form(...), email: str = F
 async def logout(request: Request):
     request.session.pop("user", None)
     return RedirectResponse(url="/login")
+
+
+def main():
+    import uvicorn
+    uvicorn.run(app, host="127.0.0.1", port=8000)

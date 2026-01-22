@@ -4,3 +4,5 @@ rbac.db
 __pycache__
 .vscode
 .venv
+dist
+pdnsmgr.egg-info  

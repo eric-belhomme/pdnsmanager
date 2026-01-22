@@ -1,0 +1,60 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pdnsmgr"
+dynamic = ["version"]
+description = "A FastAPI application for managing PowerDNS zones."
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "MIT" }
+authors = [
+    { name = "Eric Belhomme", email = "ebelhomme@ricozome.net" },
+]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Framework :: FastAPI",
+    "Topic :: Internet :: Name Service (DNS)",
+    "Topic :: Software Development :: Libraries :: Application Frameworks",
+]
+keywords = ["fastapi", "powerdns", "dns", "api", "management"]
+
+dependencies = [
+    "fastapi>=0.100.0",
+    "uvicorn[standard]>=0.20.0",
+    "aiofiles>=25.1.0",
+    "aiosqlite>=0.22.0",
+    "argon2-cffi>=25.1.0",
+    "authlib>=1.6.6",
+    "httpx>=0.28.1",
+    "itsdangerous>=2.2.0",
+    "jinja2>=3.1.6",
+    "pydantic-settings>=2.12.0",
+    "sqlalchemy>=2.0.45",
+]
+
+[project.urls]
+"Homepage" = "https://github.com/eric-belhomme/pdnsmanager"
+"Bug Tracker" = "https://github.com/eric-belhomme/pdnsmanager/issues"
+
+[project.scripts]
+pdnsmgr = "pdnsmgr.main:main"
+
+[tool.setuptools.dynamic]
+version = {attr = "pdnsmgr.main.__version__"}
+
+[tool.setuptools]
+packages = ["pdnsmgr"]
+
+[tool.setuptools.package-data]
+"pdnsmgr" = [
+    "locales/*.json",
+    "templates/*.html",
+    "static/css/*",
+    "static/js/*",
+    "static/webfonts/*",
+    "static/*"
+]

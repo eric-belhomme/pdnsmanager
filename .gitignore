@@ -2,3 +2,5 @@ admin_password
 rbac.db
 .env
 __pycache__
+.vscode
+.venv

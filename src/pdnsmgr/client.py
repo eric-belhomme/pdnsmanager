@@ -1,5 +1,5 @@
 import httpx
-from config import settings
+from .config import settings
 
 class PowerDNSClient:
     """Client for interacting with the PowerDNS API."""

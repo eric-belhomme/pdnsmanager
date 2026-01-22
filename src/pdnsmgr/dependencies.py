@@ -1,5 +1,5 @@
 from fastapi import Request
-from rbac import rbac
+from .rbac import rbac
 
 class NotAuthenticated(Exception): pass
 

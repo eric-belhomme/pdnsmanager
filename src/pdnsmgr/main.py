@@ -3,15 +3,16 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.sessions import SessionMiddleware
 from authlib.integrations.starlette_client import OAuth
-from config import settings
-from utils import templates, get_locale, TRANSLATIONS
-from dependencies import NotAuthenticated, get_current_user
-from routes import router as zones_router
-from rbac import rbac
+from .config import settings
+from .utils import templates, get_locale, TRANSLATIONS
+from .dependencies import NotAuthenticated, get_current_user
+from .routes import router as zones_router
+from .rbac import rbac
+from . import BASE_DIR
 
 app = FastAPI(title="PowerDNS Manager")
 app.add_middleware(SessionMiddleware, secret_key=settings.SECRET_KEY, max_age=settings.SESSION_MAX_AGE)
-app.mount("/static", StaticFiles(directory="static"), name="static")
+app.mount("/static", StaticFiles(directory=BASE_DIR / "static"), name="static")
 
 app.include_router(zones_router)
 
@@ -126,7 +127,3 @@ async def update_profile(request: Request, name: str = Form(...), email: str = F
 async def logout(request: Request):
     request.session.pop("user", None)
     return RedirectResponse(url="/login")
-
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(app, host="127.0.0.1", port=8000)

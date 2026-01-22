@@ -6,7 +6,7 @@ import json
 import re
 import ipaddress
 
-templates = Jinja2Templates(directory="templates")
+templates = Jinja2Templates(directory=f"{os.path.dirname(__file__)}/templates")
 
 def load_translations():
     """Load translation files from the locales directory."""

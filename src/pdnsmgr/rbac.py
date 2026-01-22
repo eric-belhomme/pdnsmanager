@@ -6,7 +6,7 @@ from argon2.exceptions import VerifyMismatchError
 import secrets
 import string
 import os
-from config import settings
+from .config import settings
 
 Base = declarative_base()
 ph = PasswordHasher()

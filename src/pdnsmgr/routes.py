@@ -1,9 +1,9 @@
 from fastapi import APIRouter, Request, Form, Depends, HTTPException
 from fastapi.responses import HTMLResponse, RedirectResponse
-from client import PowerDNSClient
-from utils import templates, get_locale, TRANSLATIONS, validate_record
-from dependencies import get_current_user
-from rbac import rbac
+from .client import PowerDNSClient
+from .utils import templates, get_locale, TRANSLATIONS, validate_record
+from .dependencies import get_current_user
+from .rbac import rbac
 import httpx
 
 router = APIRouter()

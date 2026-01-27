@@ -117,16 +117,9 @@
             toggleButton.innerHTML = "{{ _('none') }}";
             toggleButton.classList.remove('bg-gray-200', 'text-gray-700', 'dark:bg-gray-700', 'dark:text-gray-300', 'hover:bg-gray-300', 'dark:hover:bg-gray-600');
             toggleButton.classList.add('bg-indigo-600', 'text-white', 'dark:bg-indigo-500', 'dark:text-white', 'hover:bg-indigo-700', 'dark:hover:bg-indigo-600');
-        } else if (selectedTypeButtons.length === 0) {
-            toggleButton.dataset.state = 'none'; // Current state is 'none selected', so next action is 'select all'
-            toggleButton.innerHTML = "{{ _('all') }}"; // Display "All"
-            toggleButton.classList.remove('bg-indigo-600', 'text-white', 'dark:bg-indigo-500', 'dark:text-white', 'hover:bg-indigo-700', 'dark:hover:bg-indigo-600');
-            toggleButton.classList.add('bg-gray-200', 'text-gray-700', 'dark:bg-gray-700', 'dark:text-gray-300', 'hover:bg-gray-300', 'dark:hover:bg-gray-600');
-        } else {
-            // Mixed state: if some are selected but not all, the button should offer to select all.
-            toggleButton.dataset.state = 'none'; // Current state is 'mixed', next action is 'select all'
-            toggleButton.innerHTML = "{{ _('all') }}"; // Display "All"
-            toggleButton.classList.remove('bg-indigo-600', 'text-white', 'dark:bg-indigo-500', 'dark:text-white', 'hover:bg-indigo-700', 'dark:hover:bg-indigo-600');
+        } else { // This covers both 'none selected' and 'mixed state'
+            toggleButton.dataset.state = 'none';
+            toggleButton.innerHTML = "{{ _('all') }}";
             toggleButton.classList.add('bg-gray-200', 'text-gray-700', 'dark:bg-gray-700', 'dark:text-gray-300', 'hover:bg-gray-300', 'dark:hover:bg-gray-600');
         }
     }
@@ -138,14 +131,14 @@
         if (currentState === 'all') { // Currently all are types selected, so this button means "Deselect All"
             deselectAllTypes();
             buttonElement.dataset.state = 'none';
-            buttonElement.innerHTML = "{{ _('all') }}"; // Change text to "All"
+            buttonElement.innerHTML = "{{ _('all') }}";
             // Apply styling for "Deselect All" state (e.g., gray)
             buttonElement.classList.remove('bg-indigo-600', 'text-white', 'dark:bg-indigo-500', 'dark:text-white', 'hover:bg-indigo-700', 'dark:hover:bg-indigo-600');
             buttonElement.classList.add('bg-gray-200', 'text-gray-700', 'dark:bg-gray-700', 'dark:text-gray-300', 'hover:bg-gray-300', 'dark:hover:bg-gray-600');
         } else { // currentState === 'none' (or mixed), so this button means "Select All"
             selectAllTypes();
             buttonElement.dataset.state = 'all';
-            buttonElement.innerHTML = "{{ _('none') }}"; // Change text to "None"
+            buttonElement.innerHTML = "{{ _('none') }}";
             // Apply styling for "Select All" state (e.g., indigo)
             buttonElement.classList.remove('bg-gray-200', 'text-gray-700', 'dark:bg-gray-700', 'dark:text-gray-300', 'hover:bg-gray-300', 'dark:hover:bg-gray-600');
             buttonElement.classList.add('bg-indigo-600', 'text-white', 'dark:bg-indigo-500', 'dark:text-white', 'hover:bg-indigo-700', 'dark:hover:bg-indigo-600');
@@ -177,13 +170,11 @@
 <script>    
     // Helper function to convert wildcard pattern to regex pattern
     function wildcardToRegex(pattern) {
-        // Step 1: Escape all characters that are special in regex, except '*' and '?'
+        // Escape all characters that are special in regex, except '*' and '?'
         let regexPattern = pattern.replace(/[.+^${}()|[\]\\]/g, '\\$&');
-        
-        // Step 2: Convert '*' to '.*' and '?' to '.'
+        // Convert '*' to '.*' and '?' to '.'
         regexPattern = regexPattern.replace(/\*/g, '.*');
         regexPattern = regexPattern.replace(/\?/g, '.');
-        
         return regexPattern;
     }
     function applyFilters() {
@@ -193,7 +184,7 @@
         const rows = table.querySelectorAll('tbody tr');
 
         // If all filters are empty, show all rows
-        if (!filterName && selectedTypes.length === 0 && !filterData) { // If all filters are empty, show all rows
+        if (!filterName && selectedTypes.length === 0 && !filterData) {
             rows.forEach(row => row.style.display = '');
             return;
         }
@@ -211,23 +202,23 @@
             try { dataRegex = new RegExp((filterData.startsWith('^') ? '' : '.*') + wildcardToRegex(filterData) + (filterData.endsWith('$') ? '' : '.*')); } catch (e) { /* Invalid regex, treat as no filter */ }
         }
 
-        rows.forEach(row => { // Iterate over each table row
+        rows.forEach(row => {
             const nameCell = row.cells[0].innerText.toLowerCase();
-            const typeCell = row.cells[1].innerText; // Type comparison is case-sensitive
+            const typeCell = row.cells[1].innerText;
             const dataCell = row.cells[3].innerText.toLowerCase();
 
             let nameMatch = true;
-            if (filterName) { // Apply name filter if not empty
+            if (filterName) {
                 if (nameRegex) {
                     nameMatch = nameRegex.test(nameCell);
                 } else {
-                    nameMatch = false; // If regex was invalid, it means no match
+                    nameMatch = false;
                 }
             }
 
             let typeMatch = true;
-            if (selectedTypes.length > 0) { // Apply type filter if types are selected
-                typeMatch = selectedTypes.includes(typeCell.trim()); // Trim type cell text for exact match
+            if (selectedTypes.length > 0) {
+                typeMatch = selectedTypes.includes(typeCell.trim());
             }
 
             let dataMatch = true;
@@ -235,7 +226,7 @@
                 if (dataRegex) {
                     dataMatch = dataRegex.test(dataCell);
                 } else {
-                    dataMatch = false; // If regex was invalid, it means no match
+                    dataMatch = false;
                 }
             }
 
@@ -391,16 +382,16 @@
                                 {{ t }}
                             </button>
                         {% endfor %}
-                    </div> {# End type-buttons-container #}
-                    <button type="button" id="toggle-all-none-button" data-state="all" onclick="toggleAllNoneButton(this)" {# Button to toggle all/none #}
+                    </div>
+                    <button type="button" id="toggle-all-none-button" data-state="all" onclick="toggleAllNoneButton(this)"
                             class="px-3 py-1 rounded-full text-sm font-semibold border border-transparent
                                 bg-indigo-600 text-white dark:bg-indigo-500 dark:text-white
                                 hover:bg-indigo-700 dark:hover:bg-indigo-600 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-opacity-50
-                                mr-2"> {# Added mr-2 for spacing #}
-                        {{ _('none') }} {# Initial text, will be updated by JS #}
+                                mr-2">
+                        {{ _('none') }}
                     </button>
                 </div>
-            </div> {# End Filter by Type block #}
+            </div>
 
             <table id="records-table" class="min-w-full leading-normal">
                 <thead>
@@ -432,7 +423,7 @@
                         <th class="px-5 py-3 border-b-2 border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700 text-right text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase tracking-wider">
                             <div class="flex items-center justify-end">
                                 {{ _('rec_col_action') }}
-                            </div> {# End flex items-center justify-end #}
+                            </div>
                             {# Placeholder for vertical alignment #}
                             <div class="h-[2rem] mt-1"></div>
                         </th>

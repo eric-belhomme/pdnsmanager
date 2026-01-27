@@ -3,7 +3,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from .client import PowerDNSClient
 from .utils import templates, get_locale, TRANSLATIONS, validate_record
 from .dependencies import get_current_user
-from .rbac import rbac 
+from .database import dbmgr 
 import logging
 import httpx
 
@@ -38,7 +38,7 @@ async def list_zones(request: Request, user: dict = Depends(get_current_user)):
     
     for zone in zones:
         logger.debug("Checking role for user '%s' on zone '%s'.", user.get("username"), zone['name'])
-        role = await rbac.get_role(user, zone['name'])
+        role = await dbmgr.get_role(user, zone['name'])
         zone['role'] = role
         if 'in-addr.arpa' in zone['name'] or 'ip6.arpa' in zone['name']:
             reverse_zones.append(zone)
@@ -75,7 +75,7 @@ async def add_zone(domain: str = Form(...), kind: str = Form("Native"), user: di
     """Creates a new zone via the API."""
     # Check if user has global create permissions or is owner on *
     logger.info("User '%s' attempting to add zone '%s' (kind: %s).", user.get("username"), domain, kind)
-    if await rbac.get_role(user, "*") != 'owner':
+    if await dbmgr.get_role(user, "*") != 'owner':
         logger.warning("User '%s' denied permission to create zone '%s': Insufficient permissions.", user.get("username"), domain)
         raise HTTPException(status_code=403, detail="Insufficient permissions to create zones")
 
@@ -91,7 +91,7 @@ async def add_zone(domain: str = Form(...), kind: str = Form("Native"), user: di
 async def delete_zone(zone_id: str, user: dict = Depends(get_current_user)):
     """Deletes a zone via the API."""
     logger.info("User '%s' attempting to delete zone '%s'.", user.get("username"), zone_id)
-    if await rbac.get_role(user, zone_id) != 'owner':
+    if await dbmgr.get_role(user, zone_id) != 'owner':
         raise HTTPException(status_code=403, detail="Insufficient permissions")
         
     try:
@@ -107,7 +107,7 @@ async def view_zone(request: Request, zone_id: str, user: dict = Depends(get_cur
     _ = lambda key: TRANSLATIONS[lang].get(key, key)
     
     logger.info("User '%s' is viewing zone '%s'.", user.get("username"), zone_id)
-    role = await rbac.get_role(user, zone_id)
+    role = await dbmgr.get_role(user, zone_id)
     if role == 'none':
         return RedirectResponse(url="/")
     logger.debug("User '%s' has role '%s' on zone '%s'.", user.get("username"), role, zone_id)
@@ -171,9 +171,9 @@ async def add_record(
     lang = get_locale(request)
     _ = lambda key: TRANSLATIONS[lang].get(key, key)
     
-    role = await rbac.get_role(user, zone_id)
+    role = await dbmgr.get_role(user, zone_id)
     logger.info("User '%s' attempting to add record (type: %s) to zone '%s'. Role: %s", user.get("username"), rtype, zone_id, role)
-    if not rbac.can_write_record(role, rtype):
+    if not dbmgr.can_write_record(role, rtype):
         logger.warning("User '%s' denied permission to add record type '%s' to zone '%s'.", user.get("username"), rtype, zone_id)
         raise HTTPException(status_code=403, detail="Insufficient permissions for this record type")
     
@@ -224,8 +224,8 @@ async def add_record(
 async def delete_record(request: Request, zone_id: str, name: str = Form(...), rtype: str = Form(...), user: dict = Depends(get_current_user)):
     """Marks a record for deletion in the session."""
     manage_ptr: bool = Form(False) # Assume true for delete if A record, or add checkbox to delete form
-    role = await rbac.get_role(user, zone_id)
-    if not rbac.can_write_record(role, rtype):
+    role = await dbmgr.get_role(user, zone_id)
+    if not dbmgr.can_write_record(role, rtype):
         logger.warning("User '%s' denied permission to delete record type '%s' from zone '%s'.", user.get("username"), rtype, zone_id)
         raise HTTPException(status_code=403, detail="Insufficient permissions")
 
@@ -258,9 +258,9 @@ async def apply_changes(request: Request, zone_id: str, user: dict = Depends(get
     
 #    # Re-validate permissions for all pending changes
 #    logger.debug("Re-validating permissions for %d pending changes in zone '%s'.", len(changes), zone_id)
-#    role = await rbac.get_role(user, zone_id)
+#    role = await dbmgr.get_role(user, zone_id)
 #    for change in changes.values():
-#        if not rbac.can_write_record(role, change['type']):
+#        if not dbmgr.can_write_record(role, change['type']):
 #             raise HTTPException(status_code=403, detail=f"Insufficient permissions to apply change for {change['type']}")
 #
 #    rrsets_to_apply = list(changes.values())
@@ -285,11 +285,11 @@ async def apply_changes(request: Request, zone_id: str, user: dict = Depends(get
         logger.debug("Processing changes for zone '%s'.", current_zone_id)
         
         # Re-validate permissions for all pending changes in this specific zone
-        role = await rbac.get_role(user, current_zone_id)
+        role = await dbmgr.get_role(user, current_zone_id)
         rrsets_to_apply = []
         try:
             for change in changes_for_this_zone.values():
-                if not rbac.can_write_record(role, change['type']):
+                if not dbmgr.can_write_record(role, change['type']):
                     raise HTTPException(status_code=403, detail=f"Insufficient permissions to apply change for {change['type']} in zone {current_zone_id}")
                 rrsets_to_apply.append(change)
             
@@ -350,10 +350,10 @@ async def admin_page(request: Request, user: dict = Depends(get_current_user)):
         raise HTTPException(status_code=403, detail="Access denied")
     
     logger.info("User '%s' accessing admin page.", user.get("username"))
-    groups = await rbac.get_all_groups()
-    users_list = await rbac.get_all_users()
-    members = await rbac.get_all_members()
-    policies = await rbac.get_all_policies()
+    groups = await dbmgr.get_all_groups()
+    users_list = await dbmgr.get_all_users()
+    members = await dbmgr.get_all_members()
+    policies = await dbmgr.get_all_policies()
     
     lang = get_locale(request)
     _ = lambda key: TRANSLATIONS[lang].get(key, key)
@@ -374,7 +374,7 @@ async def admin_add_user(username: str = Form(...), name: str = Form(None), emai
     if "admins" not in user.get("groups", []):
         logger.warning("User '%s' denied access to admin_add_user.", user.get("username"))
         raise HTTPException(status_code=403)
-    await rbac.create_user(username, name, email, type="local", password=password)
+    await dbmgr.create_user(username, name, email, type="local", password=password)
     return RedirectResponse(url="/admin", status_code=303)
 
 @router.post("/admin/users/update")
@@ -382,7 +382,7 @@ async def admin_update_user(username: str = Form(...), name: str = Form(...), em
     if "admins" not in user.get("groups", []):
         logger.warning("User '%s' denied access to admin_update_user.", user.get("username"))
         raise HTTPException(status_code=403)
-    await rbac.update_user(username, name, email, password if password and password.strip() else None)
+    await dbmgr.update_user(username, name, email, password if password and password.strip() else None)
     return RedirectResponse(url="/admin", status_code=303)
 
 @router.post("/admin/users/delete")
@@ -390,7 +390,7 @@ async def admin_delete_user(username: str = Form(...), user: dict = Depends(get_
     if "admins" not in user.get("groups", []):
         logger.warning("User '%s' denied access to admin_delete_user.", user.get("username"))
         raise HTTPException(status_code=403)
-    await rbac.delete_user(username)
+    await dbmgr.delete_user(username)
     return RedirectResponse(url="/admin", status_code=303)
 
 @router.post("/admin/groups/add")
@@ -398,7 +398,7 @@ async def admin_add_group(name: str = Form(...), user: dict = Depends(get_curren
     if "admins" not in user.get("groups", []):
         logger.warning("User '%s' denied access to admin_add_group.", user.get("username"))
         raise HTTPException(status_code=403)
-    await rbac.create_group(name)
+    await dbmgr.create_group(name)
     return RedirectResponse(url="/admin", status_code=303)
 
 @router.post("/admin/groups/rename")
@@ -406,7 +406,7 @@ async def admin_rename_group(id: int = Form(...), name: str = Form(...), user: d
     if "admins" not in user.get("groups", []):
         logger.warning("User '%s' denied access to admin_rename_group.", user.get("username"))
         raise HTTPException(status_code=403)
-    await rbac.rename_group(id, name)
+    await dbmgr.rename_group(id, name)
     return RedirectResponse(url="/admin", status_code=303)
 
 @router.post("/admin/groups/delete")
@@ -414,7 +414,7 @@ async def admin_delete_group(id: int = Form(...), user: dict = Depends(get_curre
     if "admins" not in user.get("groups", []):
         logger.warning("User '%s' denied access to admin_delete_group.", user.get("username"))
         raise HTTPException(status_code=403)
-    await rbac.delete_group(id)
+    await dbmgr.delete_group(id)
     return RedirectResponse(url="/admin", status_code=303)
 
 @router.post("/admin/members/add")
@@ -422,7 +422,7 @@ async def admin_add_member(group_name: str = Form(...), username: str = Form(...
     if "admins" not in user.get("groups", []):
         logger.warning("User '%s' denied access to admin_add_member.", user.get("username"))
         raise HTTPException(status_code=403)
-    await rbac.add_member(group_name, username)
+    await dbmgr.add_member(group_name, username)
     return {"status": "ok"}
 
 @router.post("/admin/members/remove")
@@ -430,7 +430,7 @@ async def admin_remove_member(group_name: str = Form(...), username: str = Form(
     if "admins" not in user.get("groups", []):
         logger.warning("User '%s' denied access to admin_remove_member.", user.get("username"))
         raise HTTPException(status_code=403)
-    await rbac.remove_member(group_name, username)
+    await dbmgr.remove_member(group_name, username)
     return {"status": "ok"}
 
 @router.post("/admin/policies/add")
@@ -438,7 +438,7 @@ async def admin_add_policy(zone_name: str = Form(...), entity_name: str = Form(.
     if "admins" not in user.get("groups", []):
         logger.warning("User '%s' denied access to admin_add_policy.", user.get("username"))
         raise HTTPException(status_code=403)
-    await rbac.create_policy(zone_name, entity_name, role)
+    await dbmgr.create_policy(zone_name, entity_name, role)
     return RedirectResponse(url="/admin", status_code=303)
 
 @router.post("/admin/policies/update")
@@ -446,7 +446,7 @@ async def admin_update_policy(id: int = Form(...), zone_name: str = Form(...), e
     if "admins" not in user.get("groups", []):
         logger.warning("User '%s' denied access to admin_update_policy.", user.get("username"))
         raise HTTPException(status_code=403)
-    await rbac.update_policy(id, zone_name, entity_name, role)
+    await dbmgr.update_policy(id, zone_name, entity_name, role)
     return RedirectResponse(url="/admin", status_code=303)
 
 @router.post("/admin/policies/delete")
@@ -454,5 +454,5 @@ async def admin_delete_policy(id: int = Form(...), user: dict = Depends(get_curr
     if "admins" not in user.get("groups", []):
         logger.warning("User '%s' denied access to admin_delete_policy.", user.get("username"))
         raise HTTPException(status_code=403)
-    await rbac.delete_policy(id)
+    await dbmgr.delete_policy(id)
     return RedirectResponse(url="/admin", status_code=303)

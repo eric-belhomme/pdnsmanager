@@ -1,6 +1,6 @@
 from fastapi import Request
-from .rbac import rbac
 import logging
+from .database import dbmgr
 
 logger = logging.getLogger(__name__)
 
@@ -13,8 +13,8 @@ async def get_current_user(request: Request):
         raise NotAuthenticated()
 
     # Merge OIDC groups with local RBAC groups
-    user = user.copy()
-    user["groups"] = await rbac.get_user_groups(user.get("username", user.get("name")), user.get("groups", []))
+    user = user.copy() # type: ignore
+    user["groups"] = await dbmgr.get_user_groups(user.get("username", user.get("name")), user.get("groups", []))
     logger.debug("get_current_user: User '%s' authenticated with groups: %s", user.get("username"), user["groups"])
     return user
 

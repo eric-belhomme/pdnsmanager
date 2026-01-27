@@ -4,10 +4,10 @@ from fastapi.staticfiles import StaticFiles
 from starlette.middleware.sessions import SessionMiddleware
 from authlib.integrations.starlette_client import OAuth
 from .config import settings
-from .utils import templates, get_locale, TRANSLATIONS
+from .utils import templates, get_locale, TRANSLATIONS # Cette ligne reste inchangée
 from .dependencies import NotAuthenticated, get_current_user, get_optional_user
 from .routes import router as zones_router
-from .rbac import rbac
+from .database import dbmgr
 from . import BASE_DIR
 
 import logging
@@ -50,8 +50,8 @@ async def startup_event(): # type: ignore
         handlers=[logging.StreamHandler()]
     )
     logger.info("Application startup event triggered.")
-    logger.info("Initializing RBAC database.")
-    await rbac.init_db()
+    logger.info("Initializing database.")
+    await dbmgr.init_db()
 
 
 @app.exception_handler(NotAuthenticated)
@@ -79,8 +79,8 @@ async def login_local(request: Request, username: str = Form(...), password: str
     lang = get_locale(request)
     _ = lambda key: TRANSLATIONS[lang].get(key, key)
     
-    user = await rbac.get_user(username)
-    if user and user.type == "local" and user.password_hash and rbac.verify_password(password, user.password_hash):
+    user = await dbmgr.get_user(username)
+    if user and user.type == "local" and user.password_hash and dbmgr.verify_password(password, user.password_hash):
         logging.getLogger(__name__).info("Local user '%s' logged in successfully.", username)
         request.session["user"] = {"name": user.name, "username": user.username, "type": "local", "groups": []}
         return RedirectResponse(url="/", status_code=303)
@@ -112,7 +112,7 @@ async def auth_callback(request: Request):
         username = user_info.get("preferred_username") or user_info.get("email") or user_info.get("sub")
         
         # Sync OIDC user and groups to DB
-        await rbac.sync_oidc_user(username, user_info.get("name"), user_info.get("email"), user_info.get("groups", []))
+        await dbmgr.sync_oidc_user(username, user_info.get("name"), user_info.get("email"), user_info.get("groups", []))
         
         request.session["user"] = {
             "name": user_info.get("name", username), 
@@ -133,7 +133,7 @@ async def profile(request: Request, user: dict = Depends(get_current_user)):
     lang = get_locale(request)
     _ = lambda key: TRANSLATIONS[lang].get(key, key)
     
-    db_user = await rbac.get_user(user["username"])
+    db_user = await dbmgr.get_user(user["username"])
     if db_user:
         user["name"] = db_user.name
         user["email"] = db_user.email
@@ -151,7 +151,7 @@ async def update_profile(request: Request, name: str = Form(...), email: str = F
     if user.get("type") != "local":
         return RedirectResponse(url="/profile", status_code=303)
     logging.getLogger(__name__).info("User '%s' attempting to update profile.", user.get("username"))
-    await rbac.update_user(user["username"], name, email, password if password and password.strip() else None)
+    await dbmgr.update_user(user["username"], name, email, password if password and password.strip() else None)
     # Update session
     request.session["user"]["name"] = name
     logging.getLogger(__name__).info("User '%s' profile updated successfully.", user.get("username"))

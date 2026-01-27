@@ -3,7 +3,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from .client import PowerDNSClient
 from .utils import templates, get_locale, TRANSLATIONS, validate_record
 from .dependencies import get_current_user
-from .rbac import rbac
+from .rbac import rbac 
 import logging
 import httpx
 
@@ -164,6 +164,7 @@ async def add_record(
     rtype: str = Form(...), 
     content: str = Form(...), 
     ttl: int = Form(3600),
+    manage_ptr: bool = Form(False), # New form field
     user: dict = Depends(get_current_user)
 ):
     """Validates and adds a record change to the session."""
@@ -222,7 +223,7 @@ async def add_record(
 @router.post("/zones/{zone_id}/records/delete")
 async def delete_record(request: Request, zone_id: str, name: str = Form(...), rtype: str = Form(...), user: dict = Depends(get_current_user)):
     """Marks a record for deletion in the session."""
-    logger.info("User '%s' attempting to mark record '%s' (type: %s) for deletion in zone '%s'.", user.get("username"), name, rtype, zone_id)
+    manage_ptr: bool = Form(False) # Assume true for delete if A record, or add checkbox to delete form
     role = await rbac.get_role(user, zone_id)
     if not rbac.can_write_record(role, rtype):
         logger.warning("User '%s' denied permission to delete record type '%s' from zone '%s'.", user.get("username"), rtype, zone_id)
@@ -248,29 +249,91 @@ async def delete_record(request: Request, zone_id: str, name: str = Form(...), r
 @router.post("/zones/{zone_id}/apply")
 async def apply_changes(request: Request, zone_id: str, user: dict = Depends(get_current_user)):
     """Applies all pending changes for a zone to the PowerDNS API."""
-    logger.info("User '%s' attempting to apply changes for zone '%s'.", user.get("username"), zone_id)
-    changes = request.session.get('changes', {}).get(zone_id, {})
-    if not changes:
-        logger.info("No pending changes to apply for zone '%s'.", zone_id)
+    logger.info("User '%s' attempting to apply changes.", user.get("username"))
+    
+    all_pending_changes = request.session.get('changes', {})
+    if not all_pending_changes:
+        logger.info("No pending changes to apply for any zone.")
         return RedirectResponse(url=f"/zones/{zone_id}", status_code=303)
     
-    # Re-validate permissions for all pending changes
-    logger.debug("Re-validating permissions for %d pending changes in zone '%s'.", len(changes), zone_id)
-    role = await rbac.get_role(user, zone_id)
-    for change in changes.values():
-        if not rbac.can_write_record(role, change['type']):
-             raise HTTPException(status_code=403, detail=f"Insufficient permissions to apply change for {change['type']}")
+#    # Re-validate permissions for all pending changes
+#    logger.debug("Re-validating permissions for %d pending changes in zone '%s'.", len(changes), zone_id)
+#    role = await rbac.get_role(user, zone_id)
+#    for change in changes.values():
+#        if not rbac.can_write_record(role, change['type']):
+#             raise HTTPException(status_code=403, detail=f"Insufficient permissions to apply change for {change['type']}")
+#
+#    rrsets_to_apply = list(changes.values())
+#    
+#    try:
+#        await pdns.batch_apply_records(zone_id, rrsets_to_apply)
+#        logger.info("Successfully applied %d changes to zone '%s' by user '%s'.", len(rrsets_to_apply), zone_id, user.get("username"))
+#        del request.session['changes'][zone_id]
+#    except httpx.HTTPError as e:
+#        logger.error("Failed to apply changes to zone '%s' for user '%s': %s", zone_id, user.get("username"), e, exc_info=True)
+#        
+#    return RedirectResponse(url=f"/zones/{zone_id}", status_code=303)
+    successful_zones = []
+    failed_zones = {}
 
-    rrsets_to_apply = list(changes.values())
-    
-    try:
-        await pdns.batch_apply_records(zone_id, rrsets_to_apply)
-        logger.info("Successfully applied %d changes to zone '%s' by user '%s'.", len(rrsets_to_apply), zone_id, user.get("username"))
-        del request.session['changes'][zone_id]
-    except httpx.HTTPError as e:
-        logger.error("Failed to apply changes to zone '%s' for user '%s': %s", zone_id, user.get("username"), e, exc_info=True)
+    # Iterate over all zones that have pending changes in the session
+    # Using list() to iterate over a copy, allowing modification of all_pending_changes
+    for current_zone_id, changes_for_this_zone in list(all_pending_changes.items()): 
+        if not changes_for_this_zone:
+            continue
+
+        logger.debug("Processing changes for zone '%s'.", current_zone_id)
         
-    return RedirectResponse(url=f"/zones/{zone_id}", status_code=303)
+        # Re-validate permissions for all pending changes in this specific zone
+        role = await rbac.get_role(user, current_zone_id)
+        rrsets_to_apply = []
+        try:
+            for change in changes_for_this_zone.values():
+                if not rbac.can_write_record(role, change['type']):
+                    raise HTTPException(status_code=403, detail=f"Insufficient permissions to apply change for {change['type']} in zone {current_zone_id}")
+                rrsets_to_apply.append(change)
+            
+            if rrsets_to_apply:
+                await pdns.batch_apply_records(current_zone_id, rrsets_to_apply)
+                logger.info("Successfully applied %d changes to zone '%s' by user '%s'.", len(rrsets_to_apply), current_zone_id, user.get("username"))
+                successful_zones.append(current_zone_id)
+            else:
+                logger.info("No actual rrsets to apply for zone '%s'.", current_zone_id)
+
+        except httpx.HTTPError as e:
+            logger.error("Failed to apply changes to zone '%s' for user '%s': %s", current_zone_id, user.get("username"), e, exc_info=True)
+            failed_zones[current_zone_id] = str(e)
+        except HTTPException as e:
+            logger.warning("Permission denied for user '%s' to apply changes in zone '%s': %s", user.get("username"), current_zone_id, e.detail)
+            failed_zones[current_zone_id] = e.detail
+        except Exception as e:
+            logger.error("An unexpected error occurred while applying changes to zone '%s': %s", current_zone_id, e, exc_info=True)
+            failed_zones[current_zone_id] = str(e)
+
+    # Clean up session for successfully applied zones
+    for s_zone_id in successful_zones:
+        if s_zone_id in all_pending_changes:
+            del all_pending_changes[s_zone_id]
+    request.session['changes'] = all_pending_changes
+
+    # Provide feedback to the user
+    flash_messages = request.session.setdefault('flash_messages', [])
+    if successful_zones:
+        flash_messages.append(f"Successfully applied changes to zones: {', '.join(successful_zones)}")
+    if failed_zones:
+        for zone_id, error_msg in failed_zones.items():
+            flash_messages.append(f"Failed to apply changes to zone '{zone_id}': {error_msg}")
+
+    # Redirect back to the original zone_id or a summary page
+    if zone_id in successful_zones or zone_id in failed_zones:
+        return RedirectResponse(url=f"/zones/{zone_id}", status_code=303)
+    elif successful_zones or failed_zones:
+        # If the original zone_id was not affected, redirect to home or first affected zone
+        if successful_zones:
+            return RedirectResponse(url=f"/zones/{successful_zones[0]}", status_code=303)
+        return RedirectResponse(url=f"/zones/{list(failed_zones.keys())[0]}", status_code=303)
+    
+    return RedirectResponse(url="/", status_code=303) # Fallback to home if nothing happened
 
 @router.post("/zones/{zone_id}/discard")
 async def discard_changes(request: Request, zone_id: str, user: dict = Depends(get_current_user)):

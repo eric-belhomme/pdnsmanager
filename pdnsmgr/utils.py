@@ -84,3 +84,25 @@ def check_policy_match(policy_zone: str, zone_name: str) -> bool:
         if zone_name.endswith("." + suffix):
             return True
     return False
+
+def ip_to_ptr_info(ip_address: str) -> tuple[str, str]:
+    """
+    Converts an IP address to its corresponding PTR record name and reverse zone name.
+    e.g., "192.168.1.10" -> ("10.1.168.192.in-addr.arpa.", "1.168.192.in-addr.arpa.")
+    """
+    try:
+        ip = ipaddress.ip_address(ip_address)
+        if ip.version == 4:
+            parts = str(ip).split('.')
+            ptr_name = f"{'.'.join(reversed(parts))}.in-addr.arpa."
+            # For a /24 network (common for in-addr.arpa), the reverse zone is the first three octets reversed.
+            # This is a simplification; real reverse zones can be more complex (e.g., /16, /28).
+            # For now, assume /24 for in-addr.arpa.
+            reverse_zone = f"{'.'.join(reversed(parts[:-1]))}.in-addr.arpa."
+            return ptr_name, reverse_zone
+        elif ip.version == 6:
+            # IPv6 PTR records are more complex, requiring nibble-level reversal.
+            # For simplicity, we raise an error for now.
+            raise ValueError("IPv6 PTR management is not yet supported.")
+    except ValueError as e:
+        raise ValueError(f"Invalid IP address for PTR conversion: {e}")

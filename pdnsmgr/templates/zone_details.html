@@ -11,16 +11,28 @@
         document.getElementById('content').value = content;
         document.getElementById('form-title').innerText = "{{ _('js_edit') }}";
         window.scrollTo({ top: 0, behavior: 'smooth' });
+
+        // Show/hide PTR checkbox based on record type
+        const managePtrContainer = document.getElementById('manage-ptr-container');
+        if (type === 'A') {
+            managePtrContainer.style.display = 'block';
+            // Pre-check if this A record already has a PTR (optional, more complex)
+            // For now, leave it unchecked by default on edit.
+            document.getElementById('manage_ptr').checked = false;
+        } else {
+            managePtrContainer.style.display = 'none';
+            document.getElementById('manage_ptr').checked = false;
+        }
     }
 
-    function sortTable(n, type) {
-        var table = document.querySelector("table");
+    function sortTable(tableId, n, type) {
+        var table = document.getElementById(tableId);
         var tbody = table.querySelector("tbody");
         var rows = Array.from(tbody.rows);
         var dir = table.getAttribute("data-sort-dir") === "asc" ? "desc" : "asc";
         
-        document.querySelectorAll(".sort-icon").forEach(icon => {
-            icon.className = "sort-icon fa-solid fa-sort text-gray-400 ml-1";
+        table.querySelectorAll("th i").forEach(icon => {
+            icon.className = "sort-icon fa-solid fa-sort text-gray-400 ml-1"; // Reset icons in this table
         });
 
         rows.sort(function(a, b) {
@@ -41,8 +53,194 @@
         rows.forEach(row => tbody.appendChild(row));
         
         table.setAttribute("data-sort-dir", dir);
-        var headerIcon = table.rows[0].getElementsByTagName("TH")[n].getElementsByTagName("i")[0];
+        var headerIcon = table.querySelectorAll("th")[n].querySelector("i");
         headerIcon.className = dir === "asc" ? "sort-icon fa-solid fa-sort-up text-indigo-600 ml-1" : "sort-icon fa-solid fa-sort-down text-indigo-600 ml-1";
+    }
+
+    // Helper function to update the visual state of a type button
+    function updateTypeButtonVisualState(buttonElement, isSelected) {
+        // Remove all state-related classes first to ensure clean application
+        buttonElement.classList.remove(
+            'selected',
+            'bg-indigo-600', 'text-white', 'dark:bg-indigo-500', 'dark:text-white', 'hover:bg-indigo-700', 'dark:hover:bg-indigo-600',
+            'bg-gray-200', 'text-gray-700', 'dark:bg-gray-700', 'dark:text-gray-300', 'hover:bg-gray-300', 'dark:hover:bg-gray-600'
+        );
+
+        if (isSelected) {
+            buttonElement.classList.add(
+                'selected',
+                'bg-indigo-600', 'text-white', 'dark:bg-indigo-500', 'dark:text-white', 'hover:bg-indigo-700', 'dark:hover:bg-indigo-600'
+            );
+        } else {
+            buttonElement.classList.add(
+                'bg-gray-200', 'text-gray-700', 'dark:bg-gray-700', 'dark:text-gray-300', 'hover:bg-gray-300', 'dark:hover:bg-gray-600'
+            );
+        }
+    }
+
+    // Function to toggle the selected state of a type button
+    function toggleType(buttonElement) {
+        const isCurrentlySelected = buttonElement.classList.contains('selected');
+        updateTypeButtonVisualState(buttonElement, !isCurrentlySelected);
+        applyFilters(); // Apply filters for individual clicks
+        updateToggleAllNoneButtonState(); // Update the state of the "Tout/Aucun" button
+    }
+
+    // Function to select all type buttons
+    function selectAllTypes() {
+        document.querySelectorAll('#type-buttons-container .type-filter-button').forEach(button => {
+            updateTypeButtonVisualState(button, true);
+        });
+    }
+
+    // Function to deselect all type buttons
+    function deselectAllTypes() {
+        document.querySelectorAll('#type-buttons-container .type-filter-button').forEach(button => {
+            updateTypeButtonVisualState(button, false);
+        });
+    }
+
+    // Function to update the state of the "Toggle All/None" button based on individual type button selections
+    function updateToggleAllNoneButtonState() {
+        const toggleButton = document.getElementById('toggle-all-none-button');
+        // If the toggle button doesn't exist yet (e.g., initial load before HTML is fully parsed),
+        // or if it's not present in the current view, exit early.
+        if (!toggleButton) {
+            return;
+        }
+
+        const allTypeButtons = document.querySelectorAll('#type-buttons-container .type-filter-button');
+        const selectedTypeButtons = document.querySelectorAll('#type-buttons-container .type-filter-button.selected');
+
+        if (selectedTypeButtons.length === allTypeButtons.length) {
+            toggleButton.dataset.state = 'all';
+            toggleButton.innerHTML = "{{ _('none') }}";
+            toggleButton.classList.remove('bg-gray-200', 'text-gray-700', 'dark:bg-gray-700', 'dark:text-gray-300', 'hover:bg-gray-300', 'dark:hover:bg-gray-600');
+            toggleButton.classList.add('bg-indigo-600', 'text-white', 'dark:bg-indigo-500', 'dark:text-white', 'hover:bg-indigo-700', 'dark:hover:bg-indigo-600');
+        } else if (selectedTypeButtons.length === 0) {
+            toggleButton.dataset.state = 'none'; // Current state is 'none selected', so next action is 'select all'
+            toggleButton.innerHTML = "{{ _('all') }}"; // Display "All"
+            toggleButton.classList.remove('bg-indigo-600', 'text-white', 'dark:bg-indigo-500', 'dark:text-white', 'hover:bg-indigo-700', 'dark:hover:bg-indigo-600');
+            toggleButton.classList.add('bg-gray-200', 'text-gray-700', 'dark:bg-gray-700', 'dark:text-gray-300', 'hover:bg-gray-300', 'dark:hover:bg-gray-600');
+        } else {
+            // Mixed state: if some are selected but not all, the button should offer to select all.
+            toggleButton.dataset.state = 'none'; // Current state is 'mixed', next action is 'select all'
+            toggleButton.innerHTML = "{{ _('all') }}"; // Display "All"
+            toggleButton.classList.remove('bg-indigo-600', 'text-white', 'dark:bg-indigo-500', 'dark:text-white', 'hover:bg-indigo-700', 'dark:hover:bg-indigo-600');
+            toggleButton.classList.add('bg-gray-200', 'text-gray-700', 'dark:bg-gray-700', 'dark:text-gray-300', 'hover:bg-gray-300', 'dark:hover:bg-gray-600');
+        }
+    }
+
+    // Function to handle the "Toggle All/None" button
+    function toggleAllNoneButton(buttonElement) {
+        const currentState = buttonElement.dataset.state; // 'all' or 'none'
+
+        if (currentState === 'all') { // Currently all are types selected, so this button means "Deselect All"
+            deselectAllTypes();
+            buttonElement.dataset.state = 'none';
+            buttonElement.innerHTML = "{{ _('all') }}"; // Change text to "All"
+            // Apply styling for "Deselect All" state (e.g., gray)
+            buttonElement.classList.remove('bg-indigo-600', 'text-white', 'dark:bg-indigo-500', 'dark:text-white', 'hover:bg-indigo-700', 'dark:hover:bg-indigo-600');
+            buttonElement.classList.add('bg-gray-200', 'text-gray-700', 'dark:bg-gray-700', 'dark:text-gray-300', 'hover:bg-gray-300', 'dark:hover:bg-gray-600');
+        } else { // currentState === 'none' (or mixed), so this button means "Select All"
+            selectAllTypes();
+            buttonElement.dataset.state = 'all';
+            buttonElement.innerHTML = "{{ _('none') }}"; // Change text to "None"
+            // Apply styling for "Select All" state (e.g., indigo)
+            buttonElement.classList.remove('bg-gray-200', 'text-gray-700', 'dark:bg-gray-700', 'dark:text-gray-300', 'hover:bg-gray-300', 'dark:hover:bg-gray-600');
+            buttonElement.classList.add('bg-indigo-600', 'text-white', 'dark:bg-indigo-500', 'dark:text-white', 'hover:bg-indigo-700', 'dark:hover:bg-indigo-600');
+        }
+        applyFilters(); // Apply filters once after the bulk change
+    }
+
+    // Initial state for PTR checkbox on page load
+    document.addEventListener('DOMContentLoaded', () => {
+        // Initial selection of all type buttons
+        selectAllTypes();
+        updateToggleAllNoneButtonState(); // Set initial state of the toggle button
+        const rtypeSelect = document.getElementById('rtype');
+        const managePtrContainer = document.getElementById('manage-ptr-container');
+
+        function toggleManagePtr() {
+            if (rtypeSelect.value === 'A') {
+                managePtrContainer.style.display = 'block';
+            } else {
+                managePtrContainer.style.display = 'none';
+                document.getElementById('manage_ptr').checked = false; // Uncheck if not 'A'
+            }
+        }
+        rtypeSelect.addEventListener('change', toggleManagePtr);
+        toggleManagePtr(); // Call on load to set initial state
+    });
+</script>
+
+<script>    
+    // Helper function to convert wildcard pattern to regex pattern
+    function wildcardToRegex(pattern) {
+        // Step 1: Escape all characters that are special in regex, except '*' and '?'
+        let regexPattern = pattern.replace(/[.+^${}()|[\]\\]/g, '\\$&');
+        
+        // Step 2: Convert '*' to '.*' and '?' to '.'
+        regexPattern = regexPattern.replace(/\*/g, '.*');
+        regexPattern = regexPattern.replace(/\?/g, '.');
+        
+        return regexPattern;
+    }
+    function applyFilters() {
+        const filterName = document.getElementById('filterName').value.toLowerCase();
+        const selectedTypes = Array.from(document.querySelectorAll('#type-buttons-container .type-filter-button.selected')).map(button => button.dataset.type);        const filterData = document.getElementById('filterData').value.toLowerCase();
+        const table = document.getElementById('records-table');
+        const rows = table.querySelectorAll('tbody tr');
+
+        // If all filters are empty, show all rows
+        if (!filterName && selectedTypes.length === 0 && !filterData) { // If all filters are empty, show all rows
+            rows.forEach(row => row.style.display = '');
+            return;
+        }
+        let nameRegex = null;
+        if (filterName.startsWith('/') && filterName.endsWith('/')) {
+            try { nameRegex = new RegExp(filterName.slice(1, -1)); } catch (e) { /* Invalid regex, treat as no filter */ }
+        } else if (filterName) {
+            try { nameRegex = new RegExp((filterName.startsWith('^') ? '' : '.*') + wildcardToRegex(filterName) + (filterName.endsWith('$') ? '' : '.*')); } catch (e) { /* Invalid regex, treat as no filter */ }
+        }
+
+        let dataRegex = null;
+        if (filterData.startsWith('/') && filterData.endsWith('/')) {
+            try { dataRegex = new RegExp(filterData.slice(1, -1)); } catch (e) { /* Invalid regex, treat as no filter */ }
+        } else if (filterData) {
+            try { dataRegex = new RegExp((filterData.startsWith('^') ? '' : '.*') + wildcardToRegex(filterData) + (filterData.endsWith('$') ? '' : '.*')); } catch (e) { /* Invalid regex, treat as no filter */ }
+        }
+
+        rows.forEach(row => { // Iterate over each table row
+            const nameCell = row.cells[0].innerText.toLowerCase();
+            const typeCell = row.cells[1].innerText; // Type comparison is case-sensitive
+            const dataCell = row.cells[3].innerText.toLowerCase();
+
+            let nameMatch = true;
+            if (filterName) { // Apply name filter if not empty
+                if (nameRegex) {
+                    nameMatch = nameRegex.test(nameCell);
+                } else {
+                    nameMatch = false; // If regex was invalid, it means no match
+                }
+            }
+
+            let typeMatch = true;
+            if (selectedTypes.length > 0) { // Apply type filter if types are selected
+                typeMatch = selectedTypes.includes(typeCell.trim()); // Trim type cell text for exact match
+            }
+
+            let dataMatch = true;
+            if (filterData) {
+                if (dataRegex) {
+                    dataMatch = dataRegex.test(dataCell);
+                } else {
+                    dataMatch = false; // If regex was invalid, it means no match
+                }
+            }
+
+            row.style.display = (nameMatch && typeMatch && dataMatch) ? '' : 'none';
+        });
     }
 </script>
 {% endblock %}
@@ -64,7 +262,7 @@
 
 {% block content %}
 
-        <!-- Zone d'erreur -->
+        <!-- Error section -->
         {% if error %}
         <div class="bg-red-100 border-l-4 border-red-500 text-red-700 p-4 mb-6" role="alert">
             <p class="font-bold">{{ _('error') }}</p>
@@ -72,7 +270,17 @@
         </div>
         {% endif %}
 
-        <!-- Barre de modifications en attente -->
+        <!-- Flash messages -->
+        {% if request.session.flash_messages %}
+            {% for message in request.session.flash_messages %}
+            <div class="bg-yellow-100 border-l-4 border-yellow-500 text-yellow-700 p-4 mb-6" role="alert">
+                <p>{{ message }}</p>
+            </div>
+            {% endfor %}
+            {% set _ = request.session.pop('flash_messages') %}
+        {% endif %}
+        
+        <!-- Pending changes bar -->
         {% if has_pending_changes %}
         <div class="bg-yellow-50 border-l-4 border-yellow-400 p-4 mb-6 flex justify-between items-center shadow">
             <div class="flex items-center">
@@ -89,25 +297,25 @@
         </div>
         {% endif %}
 
-        <!-- Formulaire d'ajout de Record -->
+        <!-- Add Record Form -->
         {% if user_role == 'owner' or user_role == 'write' %}
         <div class="bg-white dark:bg-gray-800 shadow-md rounded-lg p-6 mb-8 border-t-4 border-indigo-500 dark:border-indigo-400">
             <h2 id="form-title" class="text-lg font-semibold mb-4 text-gray-800 dark:text-gray-100">{{ _('record_form') }}</h2>
-            <form action="/zones/{{ zone.id }}/records/add" method="post" class="grid grid-cols-1 md:grid-cols-12 gap-4 items-end">
+            <form action="/zones/{{ zone.id }}/records/add" method="post" class="grid grid-cols-1 md:grid-cols-12 gap-4">
                 
-                <!-- Nom -->
-                <div class="md:col-span-3">
+                <!-- Name -->
+                <div class="md:col-span-3 flex flex-col">
                     <label class="block text-gray-700 dark:text-gray-300 text-xs font-bold mb-1" for="name">{{ _('rec_name') }}</label>
-                    <input class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 dark:text-gray-200 dark:bg-gray-700 dark:border-gray-600 leading-tight focus:outline-none focus:shadow-outline" 
+                    <input class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 dark:text-gray-200 dark:bg-gray-700 dark:border-gray-600 leading-tight focus:outline-none focus:shadow-outline flex-grow" 
                            id="name" name="name" type="text" placeholder="@ ou www" 
                            value="{{ form_data.name if form_data else '' }}" required>
                     <p class="text-xs text-gray-500 mt-1">{{ _('rec_name_help') }}</p>
                 </div>
 
                 <!-- Type -->
-                <div class="md:col-span-2">
+                <div class="md:col-span-2 flex flex-col">
                     <label class="block text-gray-700 dark:text-gray-300 text-xs font-bold mb-1" for="rtype">{{ _('type') }}</label>
-                    <select class="shadow border rounded w-full py-2 px-3 text-gray-700 dark:text-gray-200 dark:bg-gray-700 dark:border-gray-600 leading-tight focus:outline-none focus:shadow-outline" 
+                    <select class="shadow border rounded w-full py-2 px-3 text-gray-700 dark:text-gray-200 dark:bg-gray-700 dark:border-gray-600 leading-tight focus:outline-none focus:shadow-outline flex-grow" 
                             id="rtype" name="rtype">
                         {% set is_reverse = 'arpa' in zone.name %}
                         {% if is_reverse %}
@@ -115,66 +323,119 @@
                         {% else %}
                             {% set types = ['SOA', 'A', 'AAAA', 'CNAME', 'MX', 'TXT', 'NS', 'SRV', 'CAA', 'LOC', 'SPF'] %}
                         {% endif %}
-                        
                         {% for t in types %}
                             {% if (user_role == 'owner') or (user_role == 'write' and t != 'SOA' and t != 'NS') %}
                             <option value="{{ t }}" {% if (form_data and form_data.type == t) or (not form_data and t == 'A' and not is_reverse) or (not form_data and t == 'PTR' and is_reverse) %}selected{% endif %}>{{ t }}</option>
                             {% endif %}
                         {% endfor %}
                     </select>
+                    <div class="h-[1.25rem] mt-1"></div> {# Placeholder for vertical alignment #}
                 </div>
 
                 <!-- TTL -->
-                <div class="md:col-span-2">
+                <div class="md:col-span-2 flex flex-col">
                     <label class="block text-gray-700 dark:text-gray-300 text-xs font-bold mb-1" for="ttl">{{ _('ttl') }}</label>
-                    <input class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 dark:text-gray-200 dark:bg-gray-700 dark:border-gray-600 leading-tight focus:outline-none focus:shadow-outline" 
+                    <input class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 dark:text-gray-200 dark:bg-gray-700 dark:border-gray-600 leading-tight focus:outline-none focus:shadow-outline flex-grow" 
                            id="ttl" name="ttl" type="number" value="3600">
+                    <div class="h-[1.25rem] mt-1"></div> {# Placeholder for vertical alignment #}
                 </div>
 
-                <!-- Contenu -->
-                <div class="md:col-span-4">
+                <!-- Content -->
+                <div class="md:col-span-4 flex flex-col">
                     <label class="block text-gray-700 dark:text-gray-300 text-xs font-bold mb-1" for="content">{{ _('content') }}</label>
-                    <input class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 dark:text-gray-200 dark:bg-gray-700 dark:border-gray-600 leading-tight focus:outline-none focus:shadow-outline" 
+                    <input class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 dark:text-gray-200 dark:bg-gray-700 dark:border-gray-600 leading-tight focus:outline-none focus:shadow-outline flex-grow" 
                            id="content" name="content" type="text" placeholder="192.168.1.1" 
                            value="{{ form_data.content if form_data else '' }}" required>
+                    <div class="h-[1.25rem] mt-1"></div> {# Placeholder for vertical alignment #}
                 </div>
 
-                <!-- Bouton -->
-                <div class="md:col-span-1">
-                    <button class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-2 rounded focus:outline-none focus:shadow-outline" type="submit">
+                <!-- Button -->
+                <div class="md:col-span-1 flex flex-col justify-end"> {# Align button to the bottom #}
+                    <button class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-2 rounded focus:outline-none focus:shadow-outline h-full" type="submit">
                         <i class="fa-solid fa-save"></i>
                     </button>
+                </div>
+
+                <!-- Manage PTR Checkbox -->
+                <div id="manage-ptr-container" class="md:col-span-12 mt-4" style="display: none;">
+                    <label class="inline-flex items-center">
+                        <input type="checkbox" id="manage_ptr" name="manage_ptr" class="form-checkbox h-5 w-5 text-indigo-600">
+                        <span class="ml-2 text-gray-700 dark:text-gray-300">{{ _('manage_ptr') }}</span>
+                    </label>
                 </div>
             </form>
         </div>
         {% endif %}
 
-        <!-- Liste des Records -->
-        <div class="bg-white dark:bg-gray-800 shadow-md rounded-lg overflow-hidden">
-            <table class="min-w-full leading-normal">
+
+        <!-- Records List -->
+        <div class="bg-white dark:bg-gray-800 shadow-md rounded-lg overflow-hidden mb-8"> {# This div is constrained by the parent max-w-7xl #}
+            <!-- Filter by Type -->
+            <div class="bg-white dark:bg-gray-800 shadow-md rounded-lg p-6 mb-8 border-t-4 border-blue-500 dark:border-blue-400">
+                <label class="block text-gray-700 dark:text-gray-300 text-xs font-bold mb-1">Type</label>
+                <div class="flex items-center flex-wrap gap-2"> {# Flex container for toggle button and type buttons #}
+                    Types:
+                    <div class="flex flex-wrap gap-2" id="type-buttons-container">
+                        {% set is_reverse = 'arpa' in zone.name %}
+                        {% if is_reverse %}
+                            {% set types = ['SOA', 'NS', 'PTR', 'TXT', 'LOC'] %}
+                        {% else %}
+                            {% set types = ['SOA', 'A', 'AAAA', 'CNAME', 'MX', 'TXT', 'NS', 'SRV', 'CAA', 'LOC', 'SPF'] %}
+                        {% endif %}
+                        {% for t in types %}
+                            {# Initial state is unselected, selectAllTypes() is called on DOMContentLoaded to select all #}
+                            <button type="button" data-type="{{ t }}" onclick="toggleType(this)"
+                                    class="type-filter-button px-3 py-1 rounded-full text-sm font-semibold
+                                        bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-300
+                                        hover:bg-gray-300 dark:hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-opacity-50">
+                                {{ t }}
+                            </button>
+                        {% endfor %}
+                    </div> {# End type-buttons-container #}
+                    <button type="button" id="toggle-all-none-button" data-state="all" onclick="toggleAllNoneButton(this)" {# Button to toggle all/none #}
+                            class="px-3 py-1 rounded-full text-sm font-semibold border border-transparent
+                                bg-indigo-600 text-white dark:bg-indigo-500 dark:text-white
+                                hover:bg-indigo-700 dark:hover:bg-indigo-600 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-opacity-50
+                                mr-2"> {# Added mr-2 for spacing #}
+                        {{ _('none') }} {# Initial text, will be updated by JS #}
+                    </button>
+                </div>
+            </div> {# End Filter by Type block #}
+
+            <table id="records-table" class="min-w-full leading-normal">
                 <thead>
                     <tr>
-                        <th class="px-5 py-3 border-b-2 border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700 text-left text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase tracking-wider cursor-pointer select-none" onclick="sortTable(0, 'text')">
-                            <div class="flex items-center">
+                        <th class="px-5 py-3 border-b-2 border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700 text-left text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase tracking-wider">
+                            <div class="flex items-center cursor-pointer select-none" onclick="sortTable('records-table', 0, 'text')">
                                 {{ _('rec_col_name') }} <i class="sort-icon fa-solid fa-sort text-gray-400 ml-1"></i>
                             </div>
+                            <input class="shadow appearance-none border rounded w-full py-1 px-2 text-gray-700 dark:text-gray-200 dark:bg-gray-700 dark:border-gray-600 leading-tight focus:outline-none focus:shadow-outline mt-1 text-sm" 
+                                   id="filterName" type="text" placeholder="* ou /regex/" onkeyup="applyFilters()">
                         </th>
-                        <th class="px-5 py-3 border-b-2 border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700 text-left text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase tracking-wider cursor-pointer select-none" onclick="sortTable(1, 'text')">
-                            <div class="flex items-center">
+                        <th class="px-5 py-3 border-b-2 border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700 text-left text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase tracking-wider">
+                            <div class="flex items-center cursor-pointer select-none" onclick="sortTable('records-table', 1, 'text')">
                                 {{ _('type') }} <i class="sort-icon fa-solid fa-sort text-gray-400 ml-1"></i>
                             </div>
                         </th>
-                        <th class="px-5 py-3 border-b-2 border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700 text-left text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase tracking-wider cursor-pointer select-none" onclick="sortTable(2, 'number')">
-                            <div class="flex items-center">
+                        <th class="px-5 py-3 border-b-2 border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700 text-left text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase tracking-wider">
+                            <div class="flex items-center cursor-pointer select-none" onclick="sortTable('records-table', 2, 'number')">
                                 {{ _('ttl') }} <i class="sort-icon fa-solid fa-sort text-gray-400 ml-1"></i>
                             </div>
                         </th>
-                        <th class="px-5 py-3 border-b-2 border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700 text-left text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase tracking-wider cursor-pointer select-none" onclick="sortTable(3, 'text')">
-                            <div class="flex items-center">
+                        <th class="px-5 py-3 border-b-2 border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700 text-left text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase tracking-wider">
+                            <div class="flex items-center cursor-pointer select-none" onclick="sortTable('records-table', 3, 'text')">
                                 {{ _('rec_col_data') }} <i class="sort-icon fa-solid fa-sort text-gray-400 ml-1"></i>
                             </div>
+                            <input class="shadow appearance-none border rounded w-full py-1 px-2 text-gray-700 dark:text-gray-200 dark:bg-gray-700 dark:border-gray-600 leading-tight focus:outline-none focus:shadow-outline mt-1 text-sm" 
+                                   id="filterData" type="text" placeholder="* ou /regex/" onkeyup="applyFilters()">
                         </th>
-                        <th class="px-5 py-3 border-b-2 border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700 text-right text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase tracking-wider">{{ _('rec_col_action') }}</th>
+                        <th class="px-5 py-3 border-b-2 border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700 text-right text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase tracking-wider">
+                            <div class="flex items-center justify-end">
+                                {{ _('rec_col_action') }}
+                            </div> {# End flex items-center justify-end #}
+                            {# Placeholder for vertical alignment #}
+                            <div class="h-[2rem] mt-1"></div>
+                        </th>
                     </tr>
                 </thead>
                 <tbody>
@@ -214,6 +475,7 @@
                                 <form action="/zones/{{ zone.id }}/records/delete" method="post" onsubmit="return confirm('{{ _('confirm_rec_del') }}');" class="inline">
                                     <input type="hidden" name="name" value="{{ rrset.name }}">
                                     <input type="hidden" name="rtype" value="{{ rrset.type }}">
+                                    <input type="hidden" name="content" value="{{ record.content }}">
                                     <button type="submit" class="text-red-600 dark:text-red-400 hover:text-red-900 dark:hover:text-red-300" title="{{ _('delete') }}">
                                         <i class="fa-solid fa-trash"></i>
                                     </button>
@@ -229,4 +491,5 @@
                 </tbody>
             </table>
         </div>
+</div>
 {% endblock %}

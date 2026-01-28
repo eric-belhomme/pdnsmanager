@@ -43,6 +43,13 @@ class RBACPolicy(Base):
     entity_name = Column(String, index=True) # username or group name
     role = Column(String) # owner, write, read, none
 
+class PDNSServer(Base):
+    __tablename__ = "pdns_servers"
+    id = Column(Integer, primary_key=True)
+    server_id = Column(String, unique=True, index=True, nullable=False)
+    api_url = Column(String, nullable=False)
+    api_key = Column(String, nullable=False)
+
 class DBManager:
     def __init__(self):
         self.engine = create_async_engine(settings.DATABASE_URL, echo=False)
@@ -106,14 +113,26 @@ class DBManager:
                 
                 await session.commit()
 
+            # Ensure default PowerDNS server entry exists
+            stmt_pdns = select(PDNSServer).where(PDNSServer.server_id == settings.PDNS_DEFAULT_SERVER_ID)
+            result_pdns = await session.execute(stmt_pdns)
+            if not result_pdns.scalars().first():
+                logger.info("Creating default PowerDNS server entry with server_id '%s'.", settings.PDNS_DEFAULT_SERVER_ID)
+                session.add(PDNSServer(
+                    server_id=settings.PDNS_DEFAULT_SERVER_ID,
+                    api_url=settings.PDNS_DEFAULT_API_URL,
+                    api_key=settings.PDNS_DEFAULT_API_KEY
+                ))
+                await session.commit()
+            else:
+                logger.debug("Default PowerDNS server entry '%s' already exists.", settings.PDNS_DEFAULT_SERVER_ID)
+
     async def get_user_groups(self, username, extra_groups=None):
         user_groups = list(extra_groups) if extra_groups else []
         
         logger.debug("Retrieving local groups for user '%s'.", username)
         async with self.async_session() as session:
-            result = await session.execute(
-                select(RBACGroupMember.group_name).where(RBACGroupMember.username == username)
-            )
+            result = await session.execute(select(RBACGroupMember.group_name).where(RBACGroupMember.username == username))
             user_groups.extend(result.scalars().all())
             
         logger.debug("User '%s' is a member of groups: %s", username, list(set(user_groups)))
@@ -384,5 +403,52 @@ class DBManager:
                     logger.info("User '%s' added to OIDC group '%s'.", username, group_name)
             await session.commit()
             logger.info("OIDC user '%s' and groups synced successfully.", username)
+
+    async def get_pdns_server(self, server_id: str):
+        async with self.async_session() as session:
+            result = await session.execute(select(PDNSServer).where(PDNSServer.server_id == server_id))
+            return result.scalars().first()
+
+    async def get_all_pdns_servers(self):
+        async with self.async_session() as session:
+            result = await session.execute(select(PDNSServer).order_by(PDNSServer.server_id))
+            return result.scalars().all()
+
+    async def create_pdns_server(self, server_id: str, api_url: str, api_key: str):
+        async with self.async_session() as session:
+            logger.info("Attempting to create PowerDNS server: server_id='%s'.", server_id)
+            try:
+                session.add(PDNSServer(server_id=server_id, api_url=api_url, api_key=api_key))
+                await session.commit()
+                logger.info("PowerDNS server '%s' created successfully.", server_id)
+            except Exception as e:
+                await session.rollback()
+                logger.error("Failed to create PowerDNS server '%s': %s", server_id, e, exc_info=True)
+
+    async def update_pdns_server(self, server_id: str, new_api_url: str, new_api_key: str):
+        async with self.async_session() as session:
+            logger.info("Attempting to update PowerDNS server: server_id='%s'.", server_id)
+            stmt = select(PDNSServer).where(PDNSServer.server_id == server_id)
+            server = (await session.execute(stmt)).scalars().first()
+            if server:
+                server.api_url = new_api_url
+                server.api_key = new_api_key
+                await session.commit()
+                logger.info("PowerDNS server '%s' updated successfully.", server_id)
+            else:
+                logger.warning("Attempted to update non-existent PowerDNS server '%s'.", server_id)
+
+    async def delete_pdns_server(self, tid: str):
+        async with self.async_session() as session:
+            logger.info("Attempting to delete PowerDNS server: server_id='%s'.", tid)
+            stmt = select(PDNSServer).where(PDNSServer.id == tid)
+            server = (await session.execute(stmt)).scalars().first()
+            if server:
+                await session.delete(server)
+                await session.commit()
+                logger.info("PowerDNS server '%s' deleted successfully.", tid)
+            else:
+                logger.warning("Attempted to delete non-existent PowerDNS server '%s'.", tid)
+
 
 dbmgr = DBManager()

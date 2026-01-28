@@ -6,10 +6,10 @@ logger = logging.getLogger(__name__)
 
 class PowerDNSClient:
     """Client for interacting with the PowerDNS API."""
-    def __init__(self):
-        self.base_url = settings.PDNS_API_URL
-        self.headers = {"X-API-Key": settings.PDNS_API_KEY}
-        self.server_id = settings.PDNS_SERVER_ID
+    def __init__(self, api_url: str, api_key: str, server_id: str):
+        self.base_url = api_url
+        self.headers = {"X-API-Key": api_key}
+        self.server_id = server_id
         self.timeout = httpx.Timeout(settings.PDNS_TIMEOUT)
         self.limits = httpx.Limits(
             max_connections=settings.PDNS_MAX_CONNECTIONS, 

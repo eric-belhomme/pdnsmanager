@@ -1,6 +1,7 @@
 {
     "access_denied": "Accès interdit",
     "actions": "Actions",
+    "admin_panel": "Panneau d'administration",
     "add_zone": "Ajouter une nouvelle zone",
     "all": "Tout",
     "api_connected": "API Connectée",
@@ -69,6 +70,7 @@
     "unapplied": "Vous avez des modifications non appliquées.",
     "user_info": "Informations",
     "username": "Nom d'utilisateur",
+    "users_management": "Gestion des utilisateurs",
     "zone": "Zone",
     "zone_domain": "Zone / Domaine"
 }

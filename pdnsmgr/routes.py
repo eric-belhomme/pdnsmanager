@@ -2,25 +2,24 @@ from fastapi import APIRouter, Request, Form, Depends, HTTPException
 from fastapi.responses import HTMLResponse, RedirectResponse
 from .client import PowerDNSClient
 from .utils import templates, get_locale, TRANSLATIONS, validate_record
-from .dependencies import get_current_user
+from .dependencies import get_current_user, get_powerdns_client
 from .database import dbmgr 
 import logging
 import httpx
 
 router = APIRouter()
-pdns = PowerDNSClient()
 
 logger = logging.getLogger(__name__)
 
 @router.get("/", response_class=HTMLResponse)
-async def list_zones(request: Request, user: dict = Depends(get_current_user)):
+async def list_zones(request: Request, user: dict = Depends(get_current_user), pdns_client: PowerDNSClient = Depends(get_powerdns_client)):
     """Lists all DNS zones, separated by forward and reverse types."""
     lang = get_locale(request)
     _ = lambda key: TRANSLATIONS[lang].get(key, key)
     
     logger.info("User '%s' is requesting list of zones.", user.get("username"))
     try:
-        zones = await pdns.get_zones()
+        zones = await pdns_client.get_zones()
     except httpx.HTTPError as e:
         logger.error("Failed to retrieve zones for user '%s': %s", user.get("username"), e, exc_info=True)
         return templates.TemplateResponse("index.html", {
@@ -71,7 +70,7 @@ async def list_zones(request: Request, user: dict = Depends(get_current_user)):
     })
 
 @router.post("/zones/add")
-async def add_zone(domain: str = Form(...), kind: str = Form("Native"), user: dict = Depends(get_current_user)):
+async def add_zone(domain: str = Form(...), kind: str = Form("Native"), user: dict = Depends(get_current_user), pdns_client: PowerDNSClient = Depends(get_powerdns_client)):
     """Creates a new zone via the API."""
     # Check if user has global create permissions or is owner on *
     logger.info("User '%s' attempting to add zone '%s' (kind: %s).", user.get("username"), domain, kind)
@@ -80,7 +79,7 @@ async def add_zone(domain: str = Form(...), kind: str = Form("Native"), user: di
         raise HTTPException(status_code=403, detail="Insufficient permissions to create zones")
 
     try:
-        await pdns.create_zone(domain=domain, kind=kind)
+        await pdns_client.create_zone(domain=domain, kind=kind)
         logger.info("Zone '%s' created successfully by user '%s'.", domain, user.get("username"))
     except httpx.HTTPStatusError as e:
         logger.error("Failed to create zone '%s' for user '%s': %s", domain, user.get("username"), e.response.text, exc_info=True)
@@ -88,20 +87,20 @@ async def add_zone(domain: str = Form(...), kind: str = Form("Native"), user: di
 
 
 @router.post("/zones/delete/{zone_id}")
-async def delete_zone(zone_id: str, user: dict = Depends(get_current_user)):
+async def delete_zone(zone_id: str, user: dict = Depends(get_current_user), pdns_client: PowerDNSClient = Depends(get_powerdns_client)):
     """Deletes a zone via the API."""
     logger.info("User '%s' attempting to delete zone '%s'.", user.get("username"), zone_id)
     if await dbmgr.get_role(user, zone_id) != 'owner':
         raise HTTPException(status_code=403, detail="Insufficient permissions")
         
     try:
-        await pdns.delete_zone(zone_id)
+        await pdns_client.delete_zone(zone_id)
     except httpx.HTTPError as e:
         logger.error("Failed to delete zone '%s' for user '%s': %s", zone_id, user.get("username"), e, exc_info=True)
     return RedirectResponse(url="/", status_code=303)
 
 @router.get("/zones/{zone_id}", response_class=HTMLResponse)
-async def view_zone(request: Request, zone_id: str, user: dict = Depends(get_current_user)):
+async def view_zone(request: Request, zone_id: str, user: dict = Depends(get_current_user), pdns_client: PowerDNSClient = Depends(get_powerdns_client)):
     """Displays zone details and records, merging API data with pending session changes."""
     lang = get_locale(request)
     _ = lambda key: TRANSLATIONS[lang].get(key, key)
@@ -113,7 +112,7 @@ async def view_zone(request: Request, zone_id: str, user: dict = Depends(get_cur
     logger.debug("User '%s' has role '%s' on zone '%s'.", user.get("username"), role, zone_id)
 
     try:
-        zone = await pdns.get_zone(zone_id)
+        zone = await pdns_client.get_zone(zone_id)
         
         # Retrieve pending changes from session
         pending_changes = request.session.get('changes', {}).get(zone_id, {})
@@ -165,7 +164,8 @@ async def add_record(
     content: str = Form(...), 
     ttl: int = Form(3600),
     manage_ptr: bool = Form(False), # New form field
-    user: dict = Depends(get_current_user)
+    user: dict = Depends(get_current_user),
+    pdns_client: PowerDNSClient = Depends(get_powerdns_client) # Added pdns_client
 ):
     """Validates and adds a record change to the session."""
     lang = get_locale(request)
@@ -179,7 +179,7 @@ async def add_record(
     
     is_valid, error_msg = validate_record(rtype, content, lang)
     if not is_valid:
-        zone = await pdns.get_zone(zone_id)
+        zone = await pdns_client.get_zone(zone_id) # Use pdns_client here
         logger.warning("Record validation failed for user '%s' in zone '%s': %s", user.get("username"), zone_id, error_msg)
         return templates.TemplateResponse("zone_details.html", {
             "request": request, 
@@ -221,7 +221,7 @@ async def add_record(
     return RedirectResponse(url=f"/zones/{zone_id}", status_code=303)
 
 @router.post("/zones/{zone_id}/records/delete")
-async def delete_record(request: Request, zone_id: str, name: str = Form(...), rtype: str = Form(...), user: dict = Depends(get_current_user)):
+async def delete_record(request: Request, zone_id: str, name: str = Form(...), rtype: str = Form(...), user: dict = Depends(get_current_user), pdns_client: PowerDNSClient = Depends(get_powerdns_client)):
     """Marks a record for deletion in the session."""
     manage_ptr: bool = Form(False) # Assume true for delete if A record, or add checkbox to delete form
     role = await dbmgr.get_role(user, zone_id)
@@ -247,7 +247,7 @@ async def delete_record(request: Request, zone_id: str, name: str = Form(...), r
     return RedirectResponse(url=f"/zones/{zone_id}", status_code=303)
 
 @router.post("/zones/{zone_id}/apply")
-async def apply_changes(request: Request, zone_id: str, user: dict = Depends(get_current_user)):
+async def apply_changes(request: Request, zone_id: str, user: dict = Depends(get_current_user), pdns_client: PowerDNSClient = Depends(get_powerdns_client)):
     """Applies all pending changes for a zone to the PowerDNS API."""
     logger.info("User '%s' attempting to apply changes.", user.get("username"))
     
@@ -294,7 +294,7 @@ async def apply_changes(request: Request, zone_id: str, user: dict = Depends(get
                 rrsets_to_apply.append(change)
             
             if rrsets_to_apply:
-                await pdns.batch_apply_records(current_zone_id, rrsets_to_apply)
+                await pdns_client.batch_apply_records(current_zone_id, rrsets_to_apply)
                 logger.info("Successfully applied %d changes to zone '%s' by user '%s'.", len(rrsets_to_apply), current_zone_id, user.get("username"))
                 successful_zones.append(current_zone_id)
             else:
@@ -354,6 +354,7 @@ async def admin_page(request: Request, user: dict = Depends(get_current_user)):
     users_list = await dbmgr.get_all_users()
     members = await dbmgr.get_all_members()
     policies = await dbmgr.get_all_policies()
+    pdns_servers = await dbmgr.get_all_pdns_servers() # Fetch PDNS servers
     
     lang = get_locale(request)
     _ = lambda key: TRANSLATIONS[lang].get(key, key)
@@ -364,6 +365,7 @@ async def admin_page(request: Request, user: dict = Depends(get_current_user)):
         "users_list": users_list,
         "groups": groups,
         "members": members,
+        "pdns_servers": pdns_servers, # Pass PDNS servers to template
         "policies": policies,
         "lang": lang,
         "_": _
@@ -455,4 +457,45 @@ async def admin_delete_policy(id: int = Form(...), user: dict = Depends(get_curr
         logger.warning("User '%s' denied access to admin_delete_policy.", user.get("username"))
         raise HTTPException(status_code=403)
     await dbmgr.delete_policy(id)
+    return RedirectResponse(url="/admin", status_code=303)
+
+# New routes for PDNS server management
+@router.post("/admin/pdns_servers/add")
+async def admin_add_pdns_server(
+    server_id: str = Form(...),
+    api_url: str = Form(...),
+    api_key: str = Form(...),
+    user: dict = Depends(get_current_user)
+):
+    if "admins" not in user.get("groups", []):
+        logger.warning("User '%s' denied access to admin_add_pdns_server.", user.get("username"))
+        raise HTTPException(status_code=403)
+    await dbmgr.create_pdns_server(server_id, api_url, api_key)
+    return RedirectResponse(url="/admin", status_code=303)
+
+@router.post("/admin/pdns_servers/update")
+async def admin_update_pdns_server(
+    original_server_id: str = Form(...), # Use original_server_id to identify the record
+    server_id: str = Form(...), # This will be the new server_id if changed, but we update based on original
+    api_url: str = Form(...),
+    api_key: str = Form(...),
+    user: dict = Depends(get_current_user)
+):
+    logger.info("User '%s' attempting to update PDNS server '%s' to '%s'. api_url '%s'.", user.get("username"), original_server_id, server_id, api_url)
+    if "admins" not in user.get("groups", []):
+        logger.warning("User '%s' denied access to admin_update_pdns_server.", user.get("username"))
+        raise HTTPException(status_code=403)
+    # For simplicity, we assume server_id is the unique identifier and is not changed.
+    # If server_id itself is meant to be editable, the logic would be more complex (e.g., check if new_server_id exists, etc.)
+    # Here, we'll update the existing entry identified by original_server_id.
+    await dbmgr.update_pdns_server(original_server_id, api_url, api_key)
+    return RedirectResponse(url="/admin", status_code=303)
+
+@router.post("/admin/pdns_servers/delete")
+async def admin_delete_pdns_server(id: str = Form(...), user: dict = Depends(get_current_user)):
+    logger.info("User '%s' attempting to delete PDNS server '%s'.", user.get("username"), server_id)
+    if "admins" not in user.get("groups", []):
+        logger.warning("User '%s' denied access to admin_delete_pdns_server.", user.get("username"))
+        raise HTTPException(status_code=403)
+    await dbmgr.delete_pdns_server(id)
     return RedirectResponse(url="/admin", status_code=303)

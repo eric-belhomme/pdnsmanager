@@ -16,7 +16,7 @@ class Settings(BaseSettings):
     OIDC_CLIENT_SECRET: str = ""
     OIDC_DISCOVERY_URL: str = ""
     SESSION_MAX_AGE: int = 3600
-    DATABASE_URL: str = "sqlite+aiosqlite:///rbac.db"
+    DATABASE_URL: str = "sqlite+aiosqlite:///pdnsmgr.db"
 
     class Config:
         env_file = ".env"

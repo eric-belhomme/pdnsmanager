@@ -49,6 +49,11 @@
         var headerIcon = table.querySelectorAll("th")[n].querySelector("i");
         headerIcon.className = dir === "asc" ? "sort-icon fa-solid fa-sort-up text-indigo-600 ml-1" : "sort-icon fa-solid fa-sort-down text-indigo-600 ml-1";
     }
+
+    function setDNSServer(tid) {
+            document.cookie = `pdns_client_id=${tid}; path=/; max-age=31536000`;
+            window.location.reload();
+    }
 </script>
 {% endblock %}
 
@@ -56,21 +61,53 @@
 <h1 class="text-3xl font-bold text-indigo-600 dark:text-indigo-400 mr-4">
     <i class="fa-solid fa-network-wired mr-2"></i> PDNS Manager
 </h1>
-{% if error %}
-<span class="bg-red-100 text-red-800 text-xs font-semibold px-2.5 py-0.5 rounded dark:bg-red-900 dark:text-red-200">{{ _('api_disconnected') }}</span>
+
+<!-- pDNS Server Selector -->
+<select onchange="setDNSServer(this.value)" class="bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-200 py-1 px-2 rounded text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
+{% for server in pdns_servers %}
+    <option value="{{ server.tid }}" {% if server.tid == pdns_client.tif %}selected{% endif %}>{% if server.status %}🟢 {% else %}🔴 {% endif %}{{ server.nickname }}</option>
+{% endfor %}
+</select>
+
+{% if not pdns_client.status %}
+  <span class="group relative inline-block cursor-help bg-red-100 text-red-800 text-xs font-semibold px-2.5 py-0.5 rounded dark:bg-red-900 dark:text-red-200">
+    {{ _('api_disconnected') }}
 {% else %}
-<span class="bg-green-100 text-green-800 text-xs font-semibold px-2.5 py-0.5 rounded dark:bg-green-900 dark:text-green-200">{{ _('api_connected') }}</span>
+  <span class="group relative inline-block cursor-help bg-green-100 text-green-800 text-xs font-semibold px-2.5 py-0.5 rounded dark:bg-green-900 dark:text-green-200">
+    {{ _('api_connected') }}
 {% endif %}
+
+    <div class="invisible group-hover:visible opacity-0 group-hover:opacity-100 transition-all duration-200 absolute z-[9999] top-full left-0 mt-2 w-72 p-3 bg-slate-900 text-white text-[11px] rounded-md shadow-2xl pointer-events-none ring-1 ring-white/10">
+      
+      <div class="flex items-center justify-between border-b border-slate-700 mb-2 pb-1">
+        <span class="font-bold text-indigo-400 uppercase">Détails de l'API</span>
+        <span class="text-[9px] px-1 bg-slate-800 rounded text-slate-400 uppercase">{{ pdns_client.daemon_type }}</span>
+      </div>
+      
+      <div class="grid grid-cols-1 gap-1">
+        <p><span class="text-slate-400">Nom:</span> {{ pdns_client.nickname }}</p>
+        <p><span class="text-slate-400">ID:</span> {{ pdns_client.server_id }}</p>
+        <p class="break-all"><span class="text-slate-400">API URL:</span> <span class="text-blue-300">{{ pdns_client.base_url }}</span></p>
+        <p><span class="text-slate-400">Version:</span> {{ pdns_client.version }}</p>
+        
+        <div class="mt-2 pt-2 border-t border-slate-800 space-y-1">
+          <p class="break-all italic text-slate-400">Config: {{ pdns_client.config_url }}</p>
+          <p class="break-all italic text-slate-400">Zones: {{ pdns_client.zones_url }}</p>
+        </div>
+      </div>
+    </div>
+  </span>
+
 {% endblock %}
 
 {% block content %}
 
         <!-- Zone d'erreur -->
-        {% if error %}
+        {% if not pdns_client.status %}
         <div class="bg-red-100 border-l-4 border-red-500 text-red-700 p-4 mb-6" role="alert">
-            <p>{{ error }}</p>
+            <span class="bg-red-100 text-red-800 text-xs font-semibold px-2.5 py-0.5 rounded dark:bg-red-900 dark:text-red-200">{{ _('api_disconnected') }}</span>
         </div>
-        {% endif %}
+        {% else %}
 
         <!-- Formulaire d'ajout -->
         <div class="bg-white dark:bg-gray-800 shadow-md rounded-lg p-6 mb-8">
@@ -239,4 +276,6 @@
                 </tbody>
             </table>
         </div>
+        {% endif %}
+
 {% endblock %}

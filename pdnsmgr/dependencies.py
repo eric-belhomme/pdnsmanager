@@ -24,17 +24,21 @@ async def get_optional_user(request: Request):
     """Returns the current user if authenticated, otherwise None."""
     return request.session.get("user")
 
-async def get_powerdns_client() -> PowerDNSClient:
-    """Dependency to provide a PowerDNSClient instance."""
-    # For now, we'll fetch the default server. In a multi-server setup,
-    # this might need to be dynamic based on user context or a selected server.
-    server_details = await dbmgr.get_pdns_server(settings.PDNS_DEFAULT_SERVER_ID)
-    if not server_details:
-        logger.error("PowerDNS server details not found for server_id '%s'.", settings.PDNS_DEFAULT_SERVER_ID)
-        raise HTTPException(status_code=500, detail="PowerDNS server configuration missing.")
-    
-    return PowerDNSClient(
-        api_url=server_details.api_url,
-        api_key=server_details.api_key,
-        server_id=server_details.server_id
-    )
+#async def get_pdns_client_id(request: Request) -> str:
+async def get_powerdns_client(request: Request) -> PowerDNSClient:
+    """Detects pDNS Client id (tid) from query param or cookie."""
+    pdns_client_id = request.query_params.get("pdns_client_id")
+    if not pdns_client_id:
+        pdns_client_id = request.cookies.get("pdns_client_id")
+    if not pdns_client_id:
+        servers = await dbmgr.get_all_pdns_servers()
+        pdns_client_id = min(i.tid for i in servers)
+    await PowerDNSClient.ping_all()
+    return await PowerDNSClient.get_or_create_by_pk(pdns_client_id)
+
+#async def get_powerdns_client() -> PowerDNSClient:
+#    """Dependency to provide a PowerDNSClient instance."""
+#    # For now, we'll fetch the default server. In a multi-server setup,
+#    # this might need to be dynamic based on user context or a selected server.
+#      
+#    return await PowerDNSClient.get_or_create_by_pk(await get_pdns_client_id())

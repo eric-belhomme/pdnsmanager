@@ -11,61 +11,56 @@ router = APIRouter()
 
 logger = logging.getLogger(__name__)
 
+
+
 @router.get("/", response_class=HTMLResponse)
-async def list_zones(request: Request, user: dict = Depends(get_current_user), pdns_client: PowerDNSClient = Depends(get_powerdns_client)):
+async def list_zones(request: Request, user: dict = Depends(get_current_user)):
     """Lists all DNS zones, separated by forward and reverse types."""
     lang = get_locale(request)
     _ = lambda key: TRANSLATIONS[lang].get(key, key)
+    pdns_servers = await PowerDNSClient.getClients()
+    pdns_client: PowerDNSClient = await get_powerdns_client(request)
     
     logger.info("User '%s' is requesting list of zones.", user.get("username"))
-    try:
-        zones = await pdns_client.get_zones()
-    except httpx.HTTPError as e:
-        logger.error("Failed to retrieve zones for user '%s': %s", user.get("username"), e, exc_info=True)
-        return templates.TemplateResponse("index.html", {
-            "request": request, 
-            "error": f"{_('error')}: {str(e)}", 
-            "forward_zones": [],
-            "reverse_zones": [],
-            "lang": lang,
-            "user": user,
-            "_": _
-        })
-
     forward_zones = []
     reverse_zones = []
-    
-    for zone in zones:
-        logger.debug("Checking role for user '%s' on zone '%s'.", user.get("username"), zone['name'])
-        role = await dbmgr.get_role(user, zone['name'])
-        zone['role'] = role
-        if 'in-addr.arpa' in zone['name'] or 'ip6.arpa' in zone['name']:
-            reverse_zones.append(zone)
-        else:
-            forward_zones.append(zone)
+    try:
+        zones = await pdns_client.get_zones()
+        for zone in zones:
+            logger.debug("Checking role for user '%s' on zone '%s'.", user.get("username"), zone['name'])
+            role = await dbmgr.get_role(user, zone['name'])
+            zone['role'] = role
+            if 'in-addr.arpa' in zone['name'] or 'ip6.arpa' in zone['name']:
+                reverse_zones.append(zone)
+            else:
+                forward_zones.append(zone)
 
-    # Default sorting
-    forward_zones.sort(key=lambda z: z['name'])
+        # Default sorting
+        forward_zones.sort(key=lambda z: z['name'])
+        def reverse_zone_key(z):
+            name = z['name'].rstrip('.')
+            if name.endswith('.in-addr.arpa'):
+                try:
+                    parts = name[:-13].split('.')
+                    return [int(p) for p in reversed(parts) if p.isdigit()]
+                except ValueError:
+                    pass
+            return name
+        reverse_zones.sort(key=reverse_zone_key)
 
-    def reverse_zone_key(z):
-        name = z['name'].rstrip('.')
-        if name.endswith('.in-addr.arpa'):
-            try:
-                parts = name[:-13].split('.')
-                return [int(p) for p in reversed(parts) if p.isdigit()]
-            except ValueError:
-                pass
-        return name
+        logger.info("Successfully listed zones for user '%s'. Forward: %d, Reverse: %d.", user.get("username"), len(forward_zones), len(reverse_zones))
 
-    reverse_zones.sort(key=reverse_zone_key)
+    except httpx.HTTPError as e:
+        logger.error("Failed to retrieve zones for user '%s': %s", user.get("username"), e, exc_info=True)
 
-    logger.info("Successfully listed zones for user '%s'. Forward: %d, Reverse: %d.", user.get("username"), len(forward_zones), len(reverse_zones))
     return templates.TemplateResponse("index.html", {
         "request": request, 
         "forward_zones": forward_zones,
         "reverse_zones": reverse_zones,
         "lang": lang,
         "user": user,
+        "pdns_servers": pdns_servers,
+        "pdns_client": pdns_client,
         "_": _
     })
 
@@ -376,7 +371,7 @@ async def admin_add_user(username: str = Form(...), name: str = Form(None), emai
     if "admins" not in user.get("groups", []):
         logger.warning("User '%s' denied access to admin_add_user.", user.get("username"))
         raise HTTPException(status_code=403)
-    await dbmgr.create_user(username, name, email, type="local", password=password)
+    await dbmgr.create_user(username, name, email, auth_type="local", password=password)
     return RedirectResponse(url="/admin", status_code=303)
 
 @router.post("/admin/users/update")
@@ -462,7 +457,9 @@ async def admin_delete_policy(id: int = Form(...), user: dict = Depends(get_curr
 # New routes for PDNS server management
 @router.post("/admin/pdns_servers/add")
 async def admin_add_pdns_server(
+    # tid: int = Form(...),
     server_id: str = Form(...),
+    nickname: str = Form(...),
     api_url: str = Form(...),
     api_key: str = Form(...),
     user: dict = Depends(get_current_user)
@@ -470,32 +467,35 @@ async def admin_add_pdns_server(
     if "admins" not in user.get("groups", []):
         logger.warning("User '%s' denied access to admin_add_pdns_server.", user.get("username"))
         raise HTTPException(status_code=403)
-    await dbmgr.create_pdns_server(server_id, api_url, api_key)
+    await dbmgr.create_pdns_server(server_id, nickname, api_url, api_key)
+    await PowerDNSClient.initialize_all_clients()
     return RedirectResponse(url="/admin", status_code=303)
 
 @router.post("/admin/pdns_servers/update")
 async def admin_update_pdns_server(
-    original_server_id: str = Form(...), # Use original_server_id to identify the record
-    server_id: str = Form(...), # This will be the new server_id if changed, but we update based on original
+    tid: int = Form(...),
+    server_id: str = Form(...),
+    nickname: str = Form(...),
     api_url: str = Form(...),
     api_key: str = Form(...),
     user: dict = Depends(get_current_user)
 ):
-    logger.info("User '%s' attempting to update PDNS server '%s' to '%s'. api_url '%s'.", user.get("username"), original_server_id, server_id, api_url)
+    logger.info("User '%s' attempting to update PDNS server %u '%s' (%s). api_url '%s'.", user.get("username"), tid, nickname, server_id, api_url)
     if "admins" not in user.get("groups", []):
         logger.warning("User '%s' denied access to admin_update_pdns_server.", user.get("username"))
         raise HTTPException(status_code=403)
     # For simplicity, we assume server_id is the unique identifier and is not changed.
     # If server_id itself is meant to be editable, the logic would be more complex (e.g., check if new_server_id exists, etc.)
     # Here, we'll update the existing entry identified by original_server_id.
-    await dbmgr.update_pdns_server(original_server_id, api_url, api_key)
+    await dbmgr.update_pdns_server(tid, server_id, nickname, api_url, api_key)
+    await PowerDNSClient.initialize_all_clients()
     return RedirectResponse(url="/admin", status_code=303)
 
 @router.post("/admin/pdns_servers/delete")
-async def admin_delete_pdns_server(id: str = Form(...), user: dict = Depends(get_current_user)):
-    logger.info("User '%s' attempting to delete PDNS server '%s'.", user.get("username"), server_id)
+async def admin_delete_pdns_server(tid: int = Form(...), user: dict = Depends(get_current_user)):
+    logger.info("User '%s' attempting to delete PDNS server '%s'.", user.get("username"), tid)
     if "admins" not in user.get("groups", []):
         logger.warning("User '%s' denied access to admin_delete_pdns_server.", user.get("username"))
         raise HTTPException(status_code=403)
-    await dbmgr.delete_pdns_server(id)
+    await dbmgr.delete_pdns_server(tid)
     return RedirectResponse(url="/admin", status_code=303)

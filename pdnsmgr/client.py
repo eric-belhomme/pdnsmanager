@@ -1,22 +1,148 @@
 import httpx
+from typing import Self, Optional
+from fastapi import HTTPException
+
 from .config import settings
+from .database import dbmgr
 
 import logging
 logger = logging.getLogger(__name__)
 
 class PowerDNSClient:
     """Client for interacting with the PowerDNS API."""
-    def __init__(self, api_url: str, api_key: str, server_id: str):
-        self.base_url = api_url
-        self.headers = {"X-API-Key": api_key}
-        self.server_id = server_id
+    
+    _registry: list[Self] = [] # Stores initialized client instances
+
+    @classmethod
+    async def initialize_all_clients(cls):
+        cls._registry.clear()
+        for cli in await dbmgr.get_all_pdns_servers():
+            await cls.get_or_create_by_pk(cli.tid)
+
+    @classmethod
+    def get(cls, tid: int) -> Optional[Self]:
+        if tid == -1:
+            if len(cls._registry) > 0:
+                return cls._registry[0]
+            return None
+        for i in cls._registry:
+            if tid == i.tid:
+                return i
+        return None
+
+    @classmethod
+    async def _initialize_and_register_client(cls, pdns_server_obj) -> Self:
+        # Check if already in registry (e.g., fetched by server_id, then by pk)
+        existing_client = cls.get(pdns_server_obj.tid)
+        if existing_client:
+            return existing_client
+
+        # Perform initial API call to fetch server details if missing
+        if not pdns_server_obj.version or pdns_server_obj.version is None:
+            logger.info("Fetching initial server details for server_id=%s (tid=%s)", pdns_server_obj.server_id, pdns_server_obj.tid)
+            async with httpx.AsyncClient(timeout=settings.PDNS_TIMEOUT, limits=httpx.Limits(max_connections=settings.PDNS_MAX_CONNECTIONS, max_keepalive_connections=settings.PDNS_MAX_KEEPALIVE)) as client:
+                try:
+                    response = await client.get(
+                        f"{pdns_server_obj.api_url}/servers/{pdns_server_obj.server_id}",
+                        headers={"X-API-Key": pdns_server_obj.api_key}
+                    )
+                    response.raise_for_status()
+                    payload = response.json()
+                    pdns_server_obj.version = payload.get('version')
+                    pdns_server_obj.daemon_type = payload.get('daemon_type')
+                    pdns_server_obj.config_url = payload.get('config_url')
+                    pdns_server_obj.zones_url = payload.get('zones_url')
+                    await dbmgr.update_pdns_server_details(
+                        pdns_server_obj.tid,
+                        pdns_server_obj.version,
+                        pdns_server_obj.daemon_type,
+                        pdns_server_obj.config_url,
+                        pdns_server_obj.zones_url
+                    )
+                    logger.info("Successfully fetched and updated server details for server_id=%s", pdns_server_obj.server_id)
+                except httpx.HTTPError as e:
+                    logger.error("Failed to fetch initial server details for server_id=%s: %s", pdns_server_obj.server_id, e, exc_info=True)
+                    # raise HTTPException(status_code=500, detail=f"Failed to connect to PowerDNS API for server {pdns_server_obj.server_id}: {e}")
+
+        instance = cls(pdns_server_obj)
+        cls._registry.append(instance)
+        logger.info("PowerDNSClient instance for server_id=%s (tid=%s) added to registry.", instance.server_id, instance.tid)
+        return instance
+
+    @classmethod
+    async def get_or_create_by_pk(cls, tid: int) -> Self:
+        """Retrieves an existing client by primary key (tid) or creates a new one."""
+        if tid == -1:
+            if len(cls._registry) > 0:
+                return cls._registry[0]
+            return None
+        client = cls.get(tid)
+        if client:
+            return client
+        
+        pdns_server_obj = await dbmgr.get_pdns_server_by_pk(tid)
+        if not pdns_server_obj:
+            logger.error("PowerDNS server details not found for tid '%s'.", tid)
+            raise HTTPException(status_code=500, detail="PowerDNS server configuration missing.")
+        
+        return await cls._initialize_and_register_client(pdns_server_obj)
+
+    @classmethod
+    async def ping_all(cls):
+        for i in cls._registry:
+            await i.ping()
+
+    @classmethod
+    async def getClients(cls) -> list[Self]:
+        await cls.ping_all()
+        return cls._registry
+    
+    def __init__(self, pdns_server_obj):
+        """Initializes a PowerDNSClient instance from a PDNSServer database object."""
+        self.tid = pdns_server_obj.tid
+        self.base_url = pdns_server_obj.api_url
+        self.headers = {"X-API-Key": pdns_server_obj.api_key}
+        self.server_id = pdns_server_obj.server_id
+        self.nickname = pdns_server_obj.nickname
+        self.version = pdns_server_obj.version
+        self.daemon_type = pdns_server_obj.daemon_type
+        self.config_url = pdns_server_obj.config_url
+        self.zones_url = pdns_server_obj.zones_url
+        
         self.timeout = httpx.Timeout(settings.PDNS_TIMEOUT)
         self.limits = httpx.Limits(
             max_connections=settings.PDNS_MAX_CONNECTIONS, 
             max_keepalive_connections=settings.PDNS_MAX_KEEPALIVE
         )
-        logger.info("PowerDNSClient initialized with base_url=%s, server_id=%s", self.base_url, self.server_id)
+        self.status = False
+        logger.debug("PowerDNSClient instance created for server_id=%s (tid=%s)", self.server_id, self.tid)
 
+
+    async def ping(self):
+        """Ping Server API. Should return 200 OK.
+
+        Returns:
+            bool: True if ping was successful.
+        """
+        logger.debug("Attempting to ping PowerDNS API profile %s", self.nickname)
+        self.status = False
+        try:
+            async with httpx.AsyncClient(timeout=self.timeout, limits=self.limits) as client:
+                response = await client.get(
+                    f"{self.base_url}/servers/{self.server_id}",
+                    headers=self.headers
+                )
+                if response.status_code == 200:
+                    logger.info("Successfully pinged PowerDNS API profile %s", self.nickname)
+                    self.status = True
+                    return True 
+                else:
+                    logger.warning("Ping failed for PowerDNS API profile %s with HTTP status %u",self.nickname, response.status_code)
+                    return False
+        except (httpx.ConnectError, httpx.HTTPError) as e:
+            logger.error("Ping failed for PowerDNS API profile %s: %s", self.nickname)
+        return False    
+ 
     async def get_zones(self):
         """Retrieves the list of all zones.
 

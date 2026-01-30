@@ -75,6 +75,13 @@
                 <a href="/profile" class="text-sm font-medium text-gray-600 dark:text-gray-300 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors" title="{{ user.username }}">{{ user.name }}</a>
                 {% endif %}
 
+                <!-- Admin page -->
+                {% if "admins" in user.groups %}
+                <a href="/admin" class="bg-amber-500 hover:bg-amber-600 text-white py-1 px-3 rounded text-sm flex items-center" title="{{ _('admin') }}">
+                    <i class="fas fa-user-shield"></i>
+                </a>
+                {% endif %}
+
                 <!-- Logout -->
                 <a href="/logout" class="bg-red-500 hover:bg-red-600 text-white py-1 px-3 rounded text-sm flex items-center" title="{{ _('logout') }}">
                     <i class="fa-solid fa-sign-out-alt"></i>

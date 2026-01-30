@@ -17,38 +17,44 @@ ph = PasswordHasher()
 
 class RBACGroup(Base):
     __tablename__ = "rbac_groups"
-    id = Column(Integer, primary_key=True)
+    tid = Column(Integer, primary_key=True)
     name = Column(String, unique=True, index=True)
     type = Column(String, default="local")
 
 class RBACUser(Base):
     __tablename__ = "rbac_users"
-    id = Column(Integer, primary_key=True)
+    tid = Column(Integer, primary_key=True)
     username = Column(String, unique=True, index=True)
     name = Column(String)
     email = Column(String)
-    type = Column(String, default="local")
+    auth_type = Column(String, default="local")
     password_hash = Column(String, nullable=True)
 
 class RBACGroupMember(Base):
     __tablename__ = "rbac_group_members"
-    id = Column(Integer, primary_key=True)
+    tid = Column(Integer, primary_key=True)
     group_name = Column(String, index=True)
     username = Column(String, index=True)
 
 class RBACPolicy(Base):
     __tablename__ = "rbac_policies"
-    id = Column(Integer, primary_key=True)
+    tid = Column(Integer, primary_key=True)
     zone_name = Column(String, index=True)
     entity_name = Column(String, index=True) # username or group name
     role = Column(String) # owner, write, read, none
 
 class PDNSServer(Base):
     __tablename__ = "pdns_servers"
-    id = Column(Integer, primary_key=True)
-    server_id = Column(String, unique=True, index=True, nullable=False)
+    tid = Column(Integer, primary_key=True, unique=True, index=True)
+    server_id = Column(String, nullable=False, default="localhost")
+    nickname = Column(String, nullable=False, unique=True, index=True)
     api_url = Column(String, nullable=False)
     api_key = Column(String, nullable=False)
+    version = Column(String, nullable=True)
+    daemon_type = Column(String, nullable=True)
+    config_url = Column(String, nullable=True)
+    zones_url = Column(String, nullable=True)
+
 
 class DBManager:
     def __init__(self):
@@ -91,7 +97,7 @@ class DBManager:
                 
                 # Create default admin user
                 logger.info("Creating default 'admin' user.")
-                session.add(RBACUser(username="admin", name="Administrator", type="local", password_hash=hashed))
+                session.add(RBACUser(username="admin", name="Administrator", auth_type="local", password_hash=hashed))
                 
                 # Write password to file
                 with open("admin_password", "w") as f:
@@ -119,6 +125,7 @@ class DBManager:
             if not result_pdns.scalars().first():
                 logger.info("Creating default PowerDNS server entry with server_id '%s'.", settings.PDNS_DEFAULT_SERVER_ID)
                 session.add(PDNSServer(
+                    nickname="default",
                     server_id=settings.PDNS_DEFAULT_SERVER_ID,
                     api_url=settings.PDNS_DEFAULT_API_URL,
                     api_key=settings.PDNS_DEFAULT_API_KEY
@@ -215,13 +222,13 @@ class DBManager:
                 await session.rollback()
                 logger.error("Failed to create group '%s': %s", name, e, exc_info=True)
 
-    async def rename_group(self, group_id, new_name):
+    async def rename_group(self, group_tid, new_name):
         async with self.async_session() as session:
-            group = await session.get(RBACGroup, group_id)
+            group = await session.get(RBACGroup, group_tid)
             if group:
                 if group.type == "oidc":
                     raise ValueError("Cannot rename OIDC group")
-                logger.info("Attempting to rename group ID %d from '%s' to '%s'.", group_id, group.name, new_name)
+                logger.info("Attempting to rename group ID %d from '%s' to '%s'.", group_tid, group.name, new_name)
                 old_name = group.name
                 
                 group.name = new_name
@@ -237,9 +244,9 @@ class DBManager:
                     .values(entity_name=new_name)
                 )
                 await session.commit() # type: ignore
-                logger.info("Group ID %d renamed to '%s' successfully.", group_id, new_name)
+                logger.info("Group ID %d renamed to '%s' successfully.", group_tid, new_name)
             else:
-                logger.warning("Attempted to rename non-existent group ID %d.", group_id)
+                logger.warning("Attempted to rename non-existent group ID %d.", group_tid)
 
     async def delete_group(self, group_id):
         async with self.async_session() as session:
@@ -328,13 +335,13 @@ class DBManager:
             logger.debug("Retrieving user '%s'.", username)
             return result.scalars().first()
 
-    async def create_user(self, username, name=None, email=None, type="local", password=None):
+    async def create_user(self, username, name=None, email=None, auth_type="local", password=None):
         if not name: name = username
         hashed = self.get_password_hash(password) if password else None
         async with self.async_session() as session:
-            logger.info("Attempting to create user '%s' (type: %s).", username, type)
+            logger.info("Attempting to create user '%s' (type: %s).", username, auth_type)
             try:
-                session.add(RBACUser(username=username, name=name, email=email, type=type, password_hash=hashed))
+                session.add(RBACUser(username=username, name=name, email=email, auth_type=auth_type, password_hash=hashed))
                 await session.commit()
                 logger.info("User '%s' created successfully.", username)
             except Exception as e:
@@ -374,15 +381,15 @@ class DBManager:
             user = (await session.execute(stmt)).scalars().first()
             if not user:
                 logger.info("Creating new OIDC user '%s'.", username)
-                user = RBACUser(username=username, name=name or username, email=email, type="oidc")
+                user = RBACUser(username=username, name=name or username, email=email, auth_type="oidc")
                 session.add(user)
             else:
                 # Update OIDC user info
-                if user.type != "oidc":
+                if user.auth_type != "oidc":
                     logger.warning("Existing local user '%s' is being converted to OIDC type.", username)
                 user.name = name or username
                 user.email = email
-                user.type = "oidc"
+                user.auth_type = "oidc"
             
             for group_name in groups:
                 # Ensure group exists
@@ -404,51 +411,71 @@ class DBManager:
             await session.commit()
             logger.info("OIDC user '%s' and groups synced successfully.", username)
 
-    async def get_pdns_server(self, server_id: str):
+    async def get_pdns_server_by_pk(self, tid: int):
+        """Retrieves a PowerDNS server by its primary key (tid)."""
         async with self.async_session() as session:
-            result = await session.execute(select(PDNSServer).where(PDNSServer.server_id == server_id))
+            result = await session.execute(select(PDNSServer).where(PDNSServer.tid == tid))
             return result.scalars().first()
 
     async def get_all_pdns_servers(self):
+        """Retrieves a list of all PowerDNS server primary keys (tid)."""
         async with self.async_session() as session:
-            result = await session.execute(select(PDNSServer).order_by(PDNSServer.server_id))
+            result = await session.execute(select(PDNSServer).order_by(PDNSServer.tid))
             return result.scalars().all()
 
-    async def create_pdns_server(self, server_id: str, api_url: str, api_key: str):
+
+    async def update_pdns_server_details(self, tid: int, version: str, daemon_type: str, config_url: str, zones_url: str):
+        """Updates the fetched details of a PowerDNS server."""
         async with self.async_session() as session:
-            logger.info("Attempting to create PowerDNS server: server_id='%s'.", server_id)
+            stmt = select(PDNSServer).where(PDNSServer.tid == tid)
+            server = (await session.execute(stmt)).scalars().first()
+            if server:
+                server.version = version
+                server.daemon_type = daemon_type
+                server.config_url = config_url
+                server.zones_url = zones_url
+                await session.commit()
+                logger.info("PowerDNS server details for tid='%s' updated successfully.", tid)
+            else:
+                logger.warning("Attempted to update details for non-existent PowerDNS server tid='%s'.", tid)
+
+    async def create_pdns_server(self, server_id: str, nickname: str, api_url: str, api_key: str):
+        async with self.async_session() as session:
+            logger.info("Attempting to create PowerDNS server: nickname='%s', server_id='%s'.", nickname, server_id)
             try:
-                session.add(PDNSServer(server_id=server_id, api_url=api_url, api_key=api_key))
+                session.add(PDNSServer(server_id=server_id, nickname=nickname, api_url=api_url, api_key=api_key))
                 await session.commit()
                 logger.info("PowerDNS server '%s' created successfully.", server_id)
             except Exception as e:
                 await session.rollback()
-                logger.error("Failed to create PowerDNS server '%s': %s", server_id, e, exc_info=True)
+                logger.error("Failed to create PowerDNS server '%s' (%s): %s", nickname, server_id, e, exc_info=True)
 
-    async def update_pdns_server(self, server_id: str, new_api_url: str, new_api_key: str):
+    async def update_pdns_server(self, tid: int, server_id: str, nickname: str, api_url: str, api_key: str):
         async with self.async_session() as session:
-            logger.info("Attempting to update PowerDNS server: server_id='%s'.", server_id)
-            stmt = select(PDNSServer).where(PDNSServer.server_id == server_id)
+            logger.info("Attempting to update PowerDNS server: tid='%u'.", tid)
+            stmt = select(PDNSServer).where(PDNSServer.tid == tid)
             server = (await session.execute(stmt)).scalars().first()
             if server:
-                server.api_url = new_api_url
-                server.api_key = new_api_key
+                server.server_id = server_id
+                server.nickname = nickname
+                server.api_url = api_url
+                server.api_key = api_key
                 await session.commit()
-                logger.info("PowerDNS server '%s' updated successfully.", server_id)
+                logger.info("PowerDNS server '%s' (%u) updated successfully.", nickname, tid)
             else:
-                logger.warning("Attempted to update non-existent PowerDNS server '%s'.", server_id)
+                logger.warning("Attempted to update non-existent PowerDNS server '%u'.", tid)
 
-    async def delete_pdns_server(self, tid: str):
+    async def delete_pdns_server(self, tid: int):
         async with self.async_session() as session:
-            logger.info("Attempting to delete PowerDNS server: server_id='%s'.", tid)
-            stmt = select(PDNSServer).where(PDNSServer.id == tid)
+            logger.info("Attempting to delete PowerDNS server: server_id='%u'.", tid)
+            stmt = select(PDNSServer).where(PDNSServer.tid == tid)
             server = (await session.execute(stmt)).scalars().first()
             if server:
                 await session.delete(server)
                 await session.commit()
                 logger.info("PowerDNS server '%s' deleted successfully.", tid)
             else:
-                logger.warning("Attempted to delete non-existent PowerDNS server '%s'.", tid)
+                logger.warning("Attempted to delete non-existent PowerDNS server '%u'.", tid)
 
 
 dbmgr = DBManager()

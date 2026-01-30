@@ -4,6 +4,7 @@ from fastapi.staticfiles import StaticFiles
 from starlette.middleware.sessions import SessionMiddleware
 from authlib.integrations.starlette_client import OAuth
 from .config import settings
+from .client import PowerDNSClient
 from .utils import templates, get_locale, TRANSLATIONS # Cette ligne reste inchangée
 from .dependencies import NotAuthenticated, get_current_user, get_optional_user
 from .routes import router as zones_router
@@ -52,6 +53,10 @@ async def startup_event(): # type: ignore
     logger.info("Application startup event triggered.")
     logger.info("Initializing database.")
     await dbmgr.init_db()
+    
+    # for cli in await dbmgr.get_all_pdns_servers():
+    #     await PowerDNSClient.get_or_create_by_pk(cli.tid)
+    await PowerDNSClient.initialize_all_clients()
 
 
 @app.exception_handler(NotAuthenticated)
@@ -80,7 +85,7 @@ async def login_local(request: Request, username: str = Form(...), password: str
     _ = lambda key: TRANSLATIONS[lang].get(key, key)
     
     user = await dbmgr.get_user(username)
-    if user and user.type == "local" and user.password_hash and dbmgr.verify_password(password, user.password_hash):
+    if user and user.auth_type == "local" and user.password_hash and dbmgr.verify_password(password, user.password_hash):
         logging.getLogger(__name__).info("Local user '%s' logged in successfully.", username)
         request.session["user"] = {"name": user.name, "username": user.username, "type": "local", "groups": []}
         return RedirectResponse(url="/", status_code=303)

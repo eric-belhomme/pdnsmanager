@@ -32,6 +32,7 @@ def get_locale(request: Request) -> str:
         lang = "fr" if "fr" in accept.lower() else "en"
     return lang if lang in TRANSLATIONS else "en"
 
+
 def validate_record(rtype: str, content: str, lang: str = "en"):
     """Validates record content based on its type."""
     t = TRANSLATIONS[lang]

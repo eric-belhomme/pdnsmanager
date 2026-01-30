@@ -1,5 +1,5 @@
 admin_password
-rbac.db
+*.db
 .env
 __pycache__
 .vscode

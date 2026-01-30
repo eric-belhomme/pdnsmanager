@@ -30,7 +30,7 @@ Configuration is handled via environment variables or a `.env` file.
 | `PDNS_MAX_KEEPALIVE` | Max keepalive connections | `20` |
 | `SECRET_KEY` | Secret key for sessions | `change-me-in-production` |
 | `SESSION_MAX_AGE` | Session duration (seconds) | `3600` |
-| `DATABASE_URL` | Database connection string | `sqlite+aiosqlite:///rbac.db` |
+| `DATABASE_URL` | Database connection string | `sqlite+aiosqlite:///pdnsmgr.db` |
 
 ### OIDC Backend Configuration
 
@@ -50,7 +50,7 @@ The project uses SQLAlchemy with asyncio. By default, it uses SQLite.
 
 * **SQLite** :
     ```ini
-    DATABASE_URL=sqlite+aiosqlite:///rbac.db
+    DATABASE_URL=sqlite+aiosqlite:///pdnsmgr.db
     ```
 
 * **PostgreSQL** :
